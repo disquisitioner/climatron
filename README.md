@@ -1,8 +1,6 @@
 <div align="center">
 	<h1>climatron</h1>
-	<p>
-		<strong>Your Personal Air Quality Robot</strong>
-	</p>
+	<h2>Your Personal Air Quality Robot</h2>
 </div>
 
 ![Climatrons](docs/images/climatrons-at-teardown2026.jpg)
@@ -13,5 +11,5 @@ convenient touchscreen display, open source hardware and software, and a special
 
 Climatron uses a Sensirion SEN-66 sensor to sample its surroundings, measuring temperature, humidity, carbon dioxide levels, airborne particulates, nitrous oxide, and volatile organic compounds. Current values as well as graphs of recent measurements are available through the built-in touchscreen color display, along with a five-day weather forecast for the current location. Overall indication of air quality for each environmental factor is provided through LEDs built into the unit's head, ranging from green for good through yellow, orange and red for fair, poor and bad respectively. 
 
-![Climatron screens](docs/images/climatron_screens-1200x218)
+![Climatron screens](docs/images/climatron_screens-1200x218.png)
 
