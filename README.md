@@ -14,4 +14,3 @@ Climatron uses a Sensirion SEN-66 sensor to sample its surroundings, measuring t
 Here's a sample of Climatron's user interface (which you can also see in the photo above).
 
 ![Climatron screens](docs/images/climatron_screens-1200x218.png)
-
