@@ -21,25 +21,25 @@ Here's a sample of Climatron's user interface (which you can also see in the pho
 
 Climatron is built around the following hardware components:
 
-* [JC2432W328](JC2432W328 ) microcontroller board, one of the many varieties of ESP32-based boards often known as "CYD" (for "Cheap Yellow Display"). The JC2432W328 includes a ST7789 display controller, 320x240 TFT LCD display, and CST820 capacitive touchscreen controller.
+* [JC2432W328](JC2432W328 ) microcontroller board, one of the many varieties of ESP32-based boards often known as "CYD" (for "Cheap Yellow Display"). The JC2432W328 includes a ST7789 display controller, 320x240 TFT LCD display, and CST820 capacitive touchscreen controller as well as a number of useful connections for external devices.
 * [Sensirion SEN66](https://sensirion.com/products/catalog/SEN66) air quality sensor, providing a wide range of environmental readings via an I2C interface.
 * [Adafruit SEN6x breakout board](https://www.adafruit.com/product/6331) for the SEN66, adapting its special data and power connector to STEMMA QT/Qwiic for easy integration with the rest of Climatron's components.
-* Three [NeoPixel](https://www.adafruit.com/product/1612) "smart" LEDs for additional feedback in Climatron's head unit.
+* Three [NeoPixel](https://www.adafruit.com/product/1612) "smart" LEDs for additional feedback in Climatron's head.
 
 ### Software
 
-Climatron is built using a variety of Arduino libraries.  All configurations require the following:
+Climatron is built using a variety of Arduino libraries.  All configurations require the following (and their dependencies):
 
-* [WiFi Manager](https://github.com/tzapu/WiFiManager), available via the Arduino Library Manager
-[TFT_eSPI graphics library](https://github.com/Bodmer/TFT_eSPI) by Bodmer, available via the Arduino Library Manager
+* [WiFi Manager](https://github.com/tzapu/WiFiManager) by tzapu, available via the Arduino Library Manager
+* [TFT_eSPI graphics library](https://github.com/Bodmer/TFT_eSPI) by Bodmer, available via the Arduino Library Manager
 * [Sensirion I2C SEN66](https://github.com/Sensirion/arduino-i2c-sen66) by Sensirion, available via the Arduino Library Manager
 * [Adafruit NeoPixel](https://github.com/adafruit/adafruit_neopixel) by Adafruit, available via the Arduino Library Manager
 * [ArduinoJson](https://github.com/bblanchon/ArduinoJson) by Benoit Blanchon, available via the Arduino Library Manager
-* [Time](https://github.com/PaulStoffregen/Time), available via the Arduino Library Manager
+* [Time](https://github.com/PaulStoffregen/Time) by Michael Margolis and Paul Stoffregen, available via the Arduino Library Manager
 * [Measure](https://github.com/disquisitioner/Measure) by David Bryant, downloaded and installed from GitHub
 * [CST820 Touchscreen library](https://github.com/ericklein/CST820_Arduino_Library) by Eric Klein, downloaded and installed from GitHub
 
-Optional endpoint services can be enabled to support MQTT, Home Assistant, InfluxDB and/or ThingSpeak integration and therefore may require any or all of the following depending on build settings:
+Optional endpoint services can be enabled to support MQTT, Home Assistant, InfluxDB and/or ThingSpeak integration and therefore may require any or all of the following depending on build settings (along with any dependencies):
 
 * [PubSubClient](https://github.com/knolleary/pubsubclient) by Nick O'Leary, available via the Arduino Library Manager (for MQTT and Home Assisatant)
 * [ThingSpeak](https://github.com/mathworks/thingspeak-arduino) by MathWorks, available via the Arduino Library Manager
