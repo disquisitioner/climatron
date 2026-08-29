@@ -29,7 +29,12 @@
     http.addHeader("Content-Type","application/x-www-form-urlencoded");
 
     String requestBody;
-    requestBody.reserve(256);
+    requestBody.reserve(512);
+
+    // Generate a string from site configuration data to include as the ThingSpeak STATUS field,
+    // helping identify devices based on where they're installed.  ("%2F" is a URL encoded "/")
+    String status = endpointPath.site + "%2F" + endpointPath.location + "%2F" + endpointPath.room +
+      "%2F" + hardwareDeviceType + "%2F" + endpointPath.deviceID;
 
     requestBody =
       "api_key=" + String(THINGS_APIKEY) +
@@ -40,7 +45,8 @@
       "&field5=" + String(voc) +
       "&field6=" + String(nox) +
       "&field7=" + String(aqi) +
-      "&field8=" + String(endpointPath.deviceID);
+      "&field8=" + String(endpointPath.deviceID) +
+      "&status=" + status;
 
     int httpCode = http.POST(requestBody);
 
