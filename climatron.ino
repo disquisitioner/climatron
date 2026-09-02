@@ -10,7 +10,7 @@
 #include "secrets.h"    // private configuration data not stored in github
 #include "data.h"       // data pair configuration
 
-#include <math.h>
+// #include <math.h>
 #include <HTTPClient.h>           // used to access Open Weather Map
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager
 #include <Measure.hpp>            // https://github.com/disquisitioner/Measure, utility class for collecting, processing, and reporting periodic data
