@@ -5,10 +5,10 @@
   See README.md for target information
 */
 
-#include "config.h"               // hardware and internet configuration parameters
-#include "climatron.h"  // global data structures
-#include "secrets.h"              // private credentials for network, MQTT
-#include "data.h"
+#include "config.h"     // public (non-secret) configuration data
+#include "climatron.h"  // core data structures
+#include "secrets.h"    // private configuration data not stored in github
+#include "data.h"       // data pair configuration
 
 #include <math.h>
 #include <HTTPClient.h>           // used to access Open Weather Map
@@ -17,15 +17,16 @@
 #include <Preferences.h>          // read-write to ESP32 persistent storage
 #include <TimeLib.h>              // https://github.com/PaulStoffregen/Time, used to process OWM Forecast
 #include <TFT_eSPI.h>             // https://github.com/Bodmer/TFT_eSPI
-#include "ui/fonts/Roboto_Regular_18.h"
-#include "ui/fonts/Roboto_Regular_24.h"
-#include "ui/fonts/Roboto_Regular_36.h"
-
-#include <Adafruit_NeoPixel.h>  // https://github.com/adafruit/adafruit_neopixel
 // CYD JC2432W328 -> CST820 capacitive touchscreen controller
 #include <CST820.h>               // https://github.com/ericklein/CST820_Arduino_Library
 #include <CST820_Helper.h>        // https://github.com/ericklein/CST820_Arduino_Library
+#include <Adafruit_NeoPixel.h>    // https://github.com/adafruit/adafruit_neopixel
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson, used by OWM retrieval routines
+
+// fonts used by UI routines not in screens.cpp
+#include "ui/fonts/Roboto_Regular_18.h"
+#include "ui/fonts/Roboto_Regular_24.h"
+#include "ui/fonts/Roboto_Regular_36.h"
 
 // CYD JC2432W328 i2c setup
 TwoWire TouchWire(0);
@@ -34,11 +35,11 @@ TwoWire SensorWire(1);
 // Instantiate LED strips
 Adafruit_NeoPixel pixels(ledStripPixelCount, pinLEDStripOne, NEO_GRB + NEO_KHZ800);
 
-// environment sensors
-// Instanstiate SEN66 hardware object, if being used
+// Instanstiate SEN66 air quality sensor
 #include <SensirionI2cSen66.h>
-SensirionI2cSen66 paqSensor;
+SensirionI2cSen66 airQualitySensor;
 
+// Instanstiate preferences data object
 Preferences nvConfig;
 
 // WiFiManager global configuration
@@ -107,7 +108,7 @@ extern uint8_t pm25Range(float);
 extern uint8_t vocRange(float);
 extern uint8_t noxRange(float);
 
-// CYD JC2432W328 -> CST820
+// CYD JC2432W328 -> CST820 capacitive touchscreen
 CST820 touchscreen(pinTouchSDA, pinTouchSCL, pinTouchRST, pinTouchIRQ);
 CST820Helper touchHelper(touchscreen);
 
@@ -1690,9 +1691,9 @@ bool sensorSEN6xInit()
       static int16_t error;
 
       // CYD JC2432W328
-      paqSensor.begin(SensorWire, SEN66_I2C_ADDR_6B); // DJB-TODO
+      airQualitySensor.begin(SensorWire, SEN66_I2C_ADDR_6B); // DJB-TODO
 
-      error = paqSensor.deviceReset();
+      error = airQualitySensor.deviceReset();
       if (error != 0) {
           debugMessage("sensorSEN6xInit(): error msg from deviceReset() is",1);
           errorToString(error, errorMessage, sizeof errorMessage);
@@ -1703,7 +1704,7 @@ bool sensorSEN6xInit()
       delay(1200);  // explicit delay per Sensirion docs
 
       // modify configuration settings while not in active measurement mode
-      error = paqSensor.setSensorAltitude(hardwareData.altitude);  // optimizes return values
+      error = airQualitySensor.setSensorAltitude(hardwareData.altitude);  // optimizes return values
       if (!error)
         debugMessage(String("SEN66 altitude set to ") + hardwareData.altitude + " meters",2);
       else {
@@ -1711,7 +1712,7 @@ bool sensorSEN6xInit()
         debugMessage(String(errorMessage) + " executing SEN66 setSensorAltitude()",1);
       }
 
-      error = paqSensor.startContinuousMeasurement();
+      error = airQualitySensor.startContinuousMeasurement();
       if (error != 0) {
           debugMessage("sensorSEN6xInit(): error msg from startContinuousMeasurement() is",1);
           errorToString(error, errorMessage, sizeof errorMessage);
@@ -1772,7 +1773,7 @@ bool sensorSEN6xRead()
     char errorMessage[256];
     float pm1, pm4, pm10, temperatureC = 0.0f; // read and discard
 
-    error = paqSensor.readMeasuredValues(pm1, pm25, pm4, pm10, humidity, temperatureC , VOCIndex,
+    error = airQualitySensor.readMeasuredValues(pm1, pm25, pm4, pm10, humidity, temperatureC , VOCIndex,
       NOxIndex, co2);
 
     if (error) {

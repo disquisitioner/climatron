@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Configuration
-SKETCH="powered_air_quality.ino"
-BOARD="esp32:esp32:esp32"
+SKETCH="."
+BOARD="esp32:esp32:esp32:PartitionScheme=min_spiffs"
 BUILD_DIR="./build"
-CACHE_DIR="./cache"
+LIB_PATH="/run/media/eric/windu/Users/eric/Dropbox/make/arduino/libraries"
 
 # Ensure directories exist for persistent speed gains
-mkdir -p "$BUILD_DIR" "$CACHE_DIR"
+mkdir -p "$BUILD_DIR"
 
 echo "--- Starting Ultra-Fast Compile ---"
 
@@ -15,11 +15,11 @@ echo "--- Starting Ultra-Fast Compile ---"
 # --build-path/--build-cache-path: Prevents recompiling the ESP32 core
 # --skip-libraries-discovery: Skips the slow recursive search for libraries
 
+#--skip-libraries-discovery \
 arduino-cli compile --fqbn "$BOARD" \
   --jobs 0 \
+  --libraries "$LIB_PATH" \
   --build-path "$BUILD_DIR" \
-  --build-cache-path "$CACHE_DIR" \
-  --skip-libraries-discovery \
   "$SKETCH"
 
 # Check if compile succeeded

@@ -1,1 +1,13 @@
+bin/
+data/
+private/
+build/
+claude/
 secrets*.h
+*.sublime-project
+*.sublime-workspace
+__vm/
+.vs/
+*.sln
+*.vcxproj*
+.DS_Store
