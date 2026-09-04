@@ -1,6 +1,6 @@
 /*
   Project:        Climatron
-  Description:    Your personal air quality monitoring robot
+  Description:    custom TFT_eSPI configuration for Climatron hardware
 
   See README.md for target information
 */

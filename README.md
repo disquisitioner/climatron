@@ -48,7 +48,7 @@ Optional endpoint services can be enabled to support MQTT, Home Assistant, Influ
 #### Software Installation
 Step 1: Ensure all of the libraries listed above are installed in your Arduino Libraries directory.
 Step 2: The root Climatron project directory contains a directory called "put in TFT_eSPI library folder". Inside this directory is a directory called "TFT_eSPI_Setups". Copy the "TFT_eSPI_Setups" directory to the root of your "TFT_eSPI" directory. You installed the "TFT_eSPI" directory into your Arduino Libraries directory during Step 1.
-Step 3: In the TFT_eSPI library directory, there is a file named "User_Setup_Select.h". Line 47 of the file is:
+Step 3: In the TFT_eSPI library directory, there is a file named "User_Setup_Select.h". Line 27 of the file is:
 	#include <User_Setup.h>           // Default setup is root library folder
 You can comment this line out and add the following line in its place:
 	#include <TFT_eSPI_Setups/climatron_setup.h>
