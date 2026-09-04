@@ -47,11 +47,17 @@ Optional endpoint services can be enabled to support MQTT, Home Assistant, Influ
 
 #### Software Installation
 Step 1: Ensure all of the libraries listed above are installed in your Arduino Libraries directory.
-Step 2: The root Climatron project directory contains a directory called "put in TFT_eSPI library folder". Inside this directory is a directory called "TFT_eSPI_Setups". Copy the "TFT_eSPI_Setups" directory to the root of your "TFT_eSPI" directory. You installed the "TFT_eSPI" directory into your Arduino Libraries directory during Step 1.
-Step 3: In the TFT_eSPI library directory, there is a file named "User_Setup_Select.h". Line 27 of the file is:
-	#include <User_Setup.h>           // Default setup is root library folder
-You can comment this line out and add the following line in its place:
-	#include <TFT_eSPI_Setups/climatron_setup.h>
-This directs TFT_eSPI configuration to the custom climatron setup. If you ever need to use TFT_eSPI to build a project other than Climatron, you can simply comment out the added line and uncomment the original line 47.
-This modification of a library file is undesirable, but is the suggested solution of the TFT_eSPI author.
-If TFT_eSPI is updated in the future, please repeat Step 3 before compiling Climatron again.
+
+Step 2: The root Climatron project directory contains a directory called `"put in TFT_eSPI library folder"`. Inside this directory is a directory called `"TFT_eSPI_Setups"`. Copy the `TFT_eSPI_Setups` directory to the root of your `TFT_eSPI` directory. (You installed the `TFT_eSPI` directory into your Arduino Libraries directory during Step 1. If you need help finding your Arduino Libraries directory consult the official [project documentation](https://docs.arduino.cc/software/ide-v1/tutorials/installing-libraries/))
+
+Step 3: In the TFT_eSPI library directory, there is a file named `"User_Setup_Select.h"`. Line 27 of the file is:
+```
+        #include <User_Setup.h>     // Default setup is root library folder
+```
+You should comment this line out and add the following line in its place:
+```
+        #include <TFT_eSPI_Setups/climatron_setup.h>
+```
+This directs TFT_eSPI configuration to the custom climatron setup you installed in Step 2. If you ever need to use TFT_eSPI to build a project other than Climatron, you can simply comment out the added line and uncomment the original line 27. This modification of a library file is undesirable, but is the suggested solution of the TFT_eSPI author until a better fix is available.
+
+If TFT_eSPI is updated in the future, please repeat Step 3 before compiling Climatron again. If you remove and reinstall the TFT_eSPI library you will need to repeat Step 2 and Step 3.
