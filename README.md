@@ -61,3 +61,21 @@ You should comment this line out and add the following line in its place:
 This directs TFT_eSPI configuration to the custom climatron setup you installed in Step 2. If you ever need to use TFT_eSPI to build a project other than Climatron, you can simply comment out the added line and uncomment the original line 27. This modification of a library file is undesirable, but is the suggested solution of the TFT_eSPI author until a better fix is available.
 
 If TFT_eSPI is updated in the future, please repeat Step 3 before compiling Climatron again. If you remove and reinstall the TFT_eSPI library you will need to repeat Step 2 and Step 3.
+
+## Building the Project
+While you can build the project direcly from the code in the repository you'll want to customize it for your installation. Site-specific settings for confidential information like  API keys for cloud services need to be provided in the `secrets.h` file.  Visible deployment qualities, such as the which network service endpoints Climatron will report to, are managed through `config.h`.  This two-part approach minimizes the likelihood that confidential site-specific information will be shared through the project repository.
+
+Additionally, Climatron includes a first-time setup procedure that enables managing device settings through creation of a local WiFi access point during
+that process. Configuration settings provided in `secrets.h` and `config.h` will be presented as defaults in that setup procedure and can be changed if desired. This allows Climatron to be customized on-site without having to modify, compile, and reload firmware.
+
+### Secrets.h
+To establish confidential settings in `secrets.h` you should copy the `secrets_template.h` file in the repository to `secrets.h` and edit it to reflect your envirionment.  Comments there will guide you through that process and provide examples.  Note that you'll only need to provide values for network services you plan to use.  Minimally you should provide the latitude, longitude and altitude for Climatron's location and an API key for [OpenWeather Map](https://openweathermap.org/).  
+
+WiFi credentials are managed through the first-time setup process built into Climatron and aren't based on having default values.
+
+### Config.h
+From a deployment perspective, `config.h` provides a single place to selectively enable and disable network endpoint services. Climatron is built to optionally report data to [ThingSpeak](https://thingspeak.mathworks.com/), [MQTT](https://mqtt.org/), [InfluxDB](https://www.influxdata.com/) and [HomeAssistant](https://www.home-assistant.io/). If you plan to use those services you will need to set the associated parameters in `secrets.h` following the information provided in comments there.
+
+A separate setting in `config.h` controls whether Climatron runs in normal or debug mode. In debug mode much more information about ongoing operation is provided through serial output, e.g. to the Arduino IDE SerialMonitor, and values are reported more often.
+
+Other settings in `config.h` specify hardware attributes, user interface values (e.g., colors), and operational parameters and can be left at their defaults.
