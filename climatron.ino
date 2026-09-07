@@ -1738,10 +1738,22 @@ void sensorSEN6xSimulate(
     }
     else
     {
-      // slightly +/- CO2 value
-      co2 += (sign * random(0, sensorCO2VariabilityRange));
-      tempF += (sign * random(0, 3));
-      humidity += (-sign * random(0,3));
+      // slightly +/- values
+      int32_t nextCO2 = (int32_t)co2 + randomSignedDelta(kSensorCO2SimVariability);
+      if (nextCO2 < (int32_t)kSensorCO2Min) {
+          nextCO2 = (int32_t)kSensorCO2Min;
+      } 
+      else if (nextCO2 > (int32_t)kSensorCO2Max) {
+          nextCO2 = (int32_t)kSensorCO2Max;
+      }
+      co2 = (uint16_t)nextCO2;
+
+      tempF = clampFloat(tempF + randomSignedDelta(kSensorTempSimVariability), kSensorTempFMin, kSensorTempFMax);
+      humidity = clampFloat(humidity + randomSignedDelta(kSensorHumiditySimVariability), kSensorHumidityMin, kSensorHumidityMax);
+      PM25 = clampFloat(PM25 + randomSignedDelta(kSensorPMSimVariability), kSensorPMMin, kSensorPMMax);
+      VOCIndex = clampFloat(VOCIndex + randomSignedDelta(kSensorVOCSimVariability), kSensorVOCMin, kSensorVOCMax);
+      NOxIndex = clampFloat(NOxIndex + randomSignedDelta(kSensorNOxSimVariability), kSensorNOxMin, kSensorNOxMax);
+
       cycleCount++;
     }
     break;
@@ -2104,6 +2116,16 @@ float randomFloat(uint16_t minValue, uint16_t maxValue) {
     uint32_t randomFixed = random(rangeFixed + 1U);
 
     return minValue + randomFixed / 100.0f;
+}
+
+int32_t randomSignedDelta(int32_t range) {
+    return random(-range, range + 1);
+}
+
+float clampFloat(float value, float minValue, float maxValue) {
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
 }
 
 void ledInit()

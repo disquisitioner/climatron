@@ -133,12 +133,14 @@ constexpr uint16_t kSensorTempFMin =       14; // -10C per SCD40, SEN66 datashee
 constexpr uint8_t kSensorTempFComfortMin = 65;
 constexpr uint8_t kSensorTempFComfortMax = 80;
 constexpr uint16_t kSensorTempFMax =       122; // 50C per SEN66 datasheet
+constexpr uint8_t kSensorTempSimVariability = 3; // max temp (in C) can change per sim cycle
 
 // humidity value thresholds
 constexpr uint16_t kSensorHumidityMin =    0; // RH% per datasheet
 constexpr uint8_t kSensorHumidityComfortMin = 40;
 constexpr uint8_t kSensorHumidityComfortMax = 60;
 constexpr uint16_t kSensorHumidityMax =    100;
+constexpr uint8_t kSensorHumiditySimVariability = 3; // max temp (in C) can change per sim cycle
 
 // CO2 value thresholds
 constexpr uint16_t kSensorCO2Min =   400;   // in ppm
@@ -147,7 +149,7 @@ constexpr uint16_t kSensorCO2Poor =  1200;
 constexpr uint16_t kSensorCO2Bad =   1600;
 constexpr uint16_t kSensorCO2Max =   5000; // SEN6x raw up to 40000
 constexpr uint8_t co2SensorReadFailureLimit = 20;
-constexpr uint8_t sensorCO2VariabilityRange = 30;
+constexpr uint8_t kSensorCO2SimVariability = 30; // max PPM can change per sim cycle
 constexpr float   kSigmaMultiplier = 2.5f;
 constexpr float   kMinSigmaFloor   = 25.0f; // ppm/sample
 
@@ -157,6 +159,7 @@ constexpr uint16_t kSensorPMFair = 25;
 constexpr uint16_t kSensorPMPoor = 50;
 constexpr uint16_t kSensorPMBad =  150;
 constexpr uint16_t kSensorPMMax =  1000; // per SEN54, SEN66 datasheet
+constexpr uint8_t kSensorPMSimVariability = 10; // max PM can change per sim cycle
 
 // VOC (volatile organic compounds) index value thresholds
 constexpr uint16_t  kSensorVOCMin =  0;    // per SEN54, SEN66 datasheet
@@ -164,6 +167,7 @@ constexpr uint16_t  kSensorVOCFair = 150;
 constexpr uint16_t  kSensorVOCPoor = 250;
 constexpr uint16_t  kSensorVOCBad =  400;
 constexpr uint16_t  kSensorVOCMax =  500;  // per SEN54, SEN66 datasheet
+constexpr uint8_t kSensorVOCSimVariability = 5; // max VOCIndex can change per sim cycle
 
 // NOx (nitrogen oxide) index value thresholds, Sensiron Info_Note_NOx_Index.pdf
 constexpr uint16_t kSensorNOxMin =   0;    // per SEN66 datasheet
@@ -171,3 +175,4 @@ constexpr uint16_t kSensorNOxFair =  49;
 constexpr uint16_t kSensorNOxPoor =  150;
 constexpr uint16_t kSensorNOxBad =   300;
 constexpr uint16_t kSensorNOxMax =   500;  // per SEN66 datasheet
+constexpr uint8_t kSensorNOxSimVariability = 5; // max NOxIndex can change per sim cycle
