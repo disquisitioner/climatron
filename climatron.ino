@@ -160,7 +160,7 @@ bool alertSound = false;
 
 void setup() {
   // config Serial first for debugMessage()
-  #ifdef DEBUG
+  #if DEBUG
     Serial.begin(115200);
     // wait for serial port connection
     while (!Serial);
@@ -201,7 +201,7 @@ void setup() {
 
   ledcAttach(pinAudio, audioFrequency, audioResolution);
 
-  // get configuration data before calling sensorInit() to load altitude value
+  // get configuration data before calling sensorSEN6xInit() to load altitude value
   if(!nvconfigRead()) {
     // no configuration parameters in non-volatile storage, so write defaults
     nvconfigDefaultsLoad();
@@ -209,7 +209,7 @@ void setup() {
   }   
 
   // initialize sensor(s)
-  if( !sensorInit()) {
+  if( !sensorSEN6xInit()) {
     // error often occurs after firmware flash/reset
     display.loadFont(Roboto_Regular_24);
     deviceReboot("Sensor failure, rebooting", 5000);
@@ -304,7 +304,7 @@ void loop() {
     // is it time to read the sensor?
   if ((millis() - timeLastSampleMS) >= timeSensorSampleMS) {
     // Read sensor(s)
-    if (sensorRead()) {
+    if (sensorSEN6xRead()) {
       numSamples++;
       // IMPROVEMENT: evaluate whether the screen actually needs updated based on changed data
       screenUpdate(screenCurrent);
@@ -602,7 +602,7 @@ void samplePost(uint8_t& numSamples)
   // do we have samples to process?
   if (numSamples) {
     // can we report to network endPoints?
-    #ifndef HARDWARE_SIMULATE
+    #if (HARDWARE_SIMULATE == 0)
       // attemot to reconnect to WiFi if needed
       if (WiFi.status() != WL_CONNECTED) {
         WiFi.reconnect();
@@ -1012,8 +1012,8 @@ bool networkWiFiManagerOpen()
   // wm.setShowInfoErase(false);      // do not show erase button on info page
   // wm.setScanDispPerc(true);       // show RSSI as percentage not graph icons
 
-  // Enable WiFiManager debug outyput based on DEBUG definition
-  #if defined(DEBUG) && (DEBUG >= 2)
+  // conditionally enable WiFiManager debug output
+  #if (DEBUG == 2)
       wfm.setDebugOutput(true);
   #else
       wfm.setDebugOutput(false);
@@ -1042,7 +1042,7 @@ bool networkWiFiManagerOpen()
   else {
     debugMessage("WiFi connection failure; local sensor data ONLY", 1);
     hardwareData.rssi = 255; // 255 indicates no WiFi connection 
-    #ifdef HARDWARE_SIMULATE
+    #if HARDWARE_SIMULATE
       networkRSSISimulate();
     #endif
   }
@@ -1151,7 +1151,7 @@ uint8_t networkRSSIRead()
 {
   uint8_t rssi;
 
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     rssi = networkRSSISimulate();
   #else
     // attemot to reconnect to WiFi if needed
@@ -1172,7 +1172,7 @@ uint8_t networkRSSIRead()
 void networkDisconnect()
 // Disconnect from WiFi network
 {
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     debugMessage("power off: SIMULATED WiFi",1);
     return;
   #else
@@ -1400,12 +1400,12 @@ void OWMForecastSimulate()
   int i;
   float midpoint;
 
-  midpoint = (sensorTempFMin + sensorTempFMax)/2.0;
+  midpoint = (kSensorTempFMin + kSensorTempFMax)/2.0;
   owmSiteForecast.cityName = String("Pleasantville (US)");
   for(i=0;i<5;i++) {
-    owmSiteForecast.forecastData[i].maxTempF = randomFloatRange(midpoint,sensorTempFMax);
-    owmSiteForecast.forecastData[i].minTempF = randomFloatRange(sensorTempFMin,midpoint);
-    owmSiteForecast.forecastData[i].humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
+    owmSiteForecast.forecastData[i].maxTempF = randomFloat(midpoint,kSensorTempFMax);
+    owmSiteForecast.forecastData[i].minTempF = randomFloat(kSensorTempFMin,midpoint);
+    owmSiteForecast.forecastData[i].humidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
     owmSiteForecast.forecastData[i].wxFcst = random(1,6);  // Confirm consistent with forecast defines FCST_*
     owmSiteForecast.forecastData[i].count = 40;
     owmSiteForecast.forecastData[i].wday = i;
@@ -1442,7 +1442,7 @@ boolean OWMForecastRead()
   JsonDocument doc;
   Measure fcstTemperatureF, fcstHumidity;
 
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     OWMForecastSimulate();
     return true;
   #else
@@ -1566,7 +1566,7 @@ void OWMAirPollutionSimulate()
 // Improvement : NA
 {
   owmAirQuality.aqi = random(OWMAQIMin, OWMAQIMax);
-  owmAirQuality.pm25 = randomFloatRange(OWMPM25Min, OWMPM25Max);
+  owmAirQuality.pm25 = randomFloat(OWMPM25Min, OWMPM25Max);
   debugMessage(String("SIMULATED OWM Air Pollution PM2.5: ") + owmAirQuality.pm25 + ", AQI: " + owmAirQuality.aqi,1);
 }
 
@@ -1574,7 +1574,7 @@ bool OWMAirPollutionRead()
 // stores local air pollution info from Open Weather Map in environment global
 {
   debugMessage(String("OWMAirPollutionRead() start"), 1);
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     OWMAirPollutionSimulate();
     return true;
   #else
@@ -1648,42 +1648,12 @@ bool OWMAirPollutionRead()
   return true;
 }
 
-bool sensorInit()
-// Generalized entry point for sensor initialization
-{
-  // Conditionally compiled based on the sensor configuration as defined in config.h
-  bool success = false;
-
-    success = sensorSEN6xInit();
-    if (success) {
-      #ifndef HARDWARE_SIMULATE
-        // Explicit delay as SEN66 takes 10-11 seconds for valid NOx index values
-        delay(12000);
-      #endif
-    }
-
-  return success;
-}
-
-bool sensorRead()
-// Generalized entry point for reading sensor values
-{
-  bool success = false;  // default setting for the final #ifndef
-
-  success = sensorSEN6xRead();
-  if (!success) {
-    debugMessage("SEN66 read failed",1);
-  }
-
-  return success;
-}
-
 // Initialize SEN66 sensor
 bool sensorSEN6xInit()
 {
   debugMessage ("sensorSEN6xInit() start",1);
 
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     return true;
   #else
       static char errorMessage[64];
@@ -1718,34 +1688,133 @@ bool sensorSEN6xInit()
           debugMessage(errorMessage,1);
           return false;
       }
-
       // TODO: Add support for setting custom temperature offset for SEN66
+      // Explicit delay as SEN66 takes 10-11 seconds for valid NOx index values
+      delay(12000);
       return true;
   #endif
 }
 
-void sensorSEN6xSimulate(float& simulatedTemperatureF, float& simulatedHumidity, uint16_t& simulatedCO2, float& simulatedPM25, float& simulatedVOCIndex, float& simulatedNOxIndex)
-// Description: Simulates sensor reading from SEN66 sensor
-//  leveraging other sensor simulations
-// Parameters: NA
-// Return: simulated values
-// Improvement: implement mode passthrough for other sensorSimulate APIs
+// Description: Simulates air quality values from Sensirion SCD6X sensor
+// Parameters:
+//  cycles = If used, determines how many times the current mode executes before resetting
+// Output : NA
+// Improvement : rapid CO2 rise mode to test sampleEvaluate()
+void sensorSEN6xSimulate(
+  uint8_t cycles,
+  float& simulatedTemperatureF,
+  float& simulatedHumidity,
+  uint16_t& simulatedCO2,
+  float& simulatedPM25,
+  float& simulatedVOCIndex,
+  float& simulatedNOxIndex)
 {
   debugMessage ("sensorSEN6xSimulate() start",1);
 
-  simulatedPM25 = 0.0f;
-  simulatedTemperatureF = 0.0f;
-  simulatedHumidity = 0.0f;
-  simulatedVOCIndex = 0.0f;
-  simulatedNOxIndex = 0.0f;
-  simulatedCO2 = 0;
+  static uint8_t currentMode = 0;
+  static uint8_t cycleCount = 0;
+  static float tempF = 0.0f;
+  static float humidity = 0.0f;
+  static uint16_t co2 = 0;
+  static float PM25 = 0.0f;
+  static float VOCIndex = 0.0f;
+  static float NOxIndex = 0.0f;
 
-  sensorSCD4xSimulate(1,10, simulatedTemperatureF, simulatedHumidity,simulatedCO2);
-  sensorSEN54Simulate(simulatedPM25, simulatedVOCIndex);
-  simulatedNOxIndex = randomFloatRange(sensorNOxMin, sensorNOxMax);
+  // randomly generated sign used in some modes
+  int8_t sign = random(0, 2) == 0 ? -1 : 1;
+
+  switch (HARDWARE_SIMULATE) {
+  case 1: // 0 = random values every time
+    sensorSimulateRandom(tempF, humidity, co2, PM25, VOCIndex, NOxIndex);
+    break;    
+  case 2: // 1 = random values, slightly +/- per cycle
+    if (cycleCount == cycles) {
+      cycleCount = 0;
+    }
+    if (!cycleCount) {
+      // create new base values
+      sensorSimulateRandom(tempF, humidity, co2, PM25, VOCIndex, NOxIndex);
+      cycleCount++;
+    }
+    else
+    {
+      // slightly +/- CO2 value
+      co2 += (sign * random(0, sensorCO2VariabilityRange));
+      tempF += (sign * random(0, 3));
+      humidity += (-sign * random(0,3));
+      cycleCount++;
+    }
+    break;
+  case 3: // 2 = out of bounds, "bad" values designed to activate alert modes
+    tempF = (random(0,2)) ? kSensorTempFMin-2 : kSensorTempFMax+2;
+    humidity = (random(0,2)) ? kSensorHumidityMin-2 : kSensorHumidityMax+2;
+    co2 = (random(0,2)) ? kSensorCO2Min-2 : kSensorCO2Max+2;
+    break;
+  case 4: // rapidly rising values designed to activate sampleEvaluate()
+    if (cycleCount == cycles) {
+      cycleCount = 0;
+    }
+    if (!cycleCount) {
+      // clear the retained CO2 values so they don't affect std dev calculation
+      totalCO2.deleteRetained();
+      // create new base values
+      tempF = randomFloat((kSensorTempFMin + (3 * cycles)),(kSensorTempFMax - (3 * cycles))); // crude buffer for potential cycle movement
+      humidity = randomFloat((kSensorHumidityMin + (3* cycles)),(kSensorHumidityMax - (3 * cycles)));
+      co2 = random(kSensorCO2Min, kSensorCO2Bad); // vs. kSensorCO2Max while produces unrealistic values
+      cycleCount++;
+    }
+    else
+    {
+      // rapidly spike CO2 value
+      co2 += random(kMinSigmaFloor * 2, kMinSigmaFloor * 4);
+      tempF += (sign * random(0, 3));
+      humidity += (-sign * random(0,3));
+      cycleCount++;
+    }
+    break;
+  default: // should not occur; random values, ignores cycles value
+    tempF = randomFloat(kSensorTempFMin,kSensorTempFMax);
+    humidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
+    co2 = random(kSensorCO2Min, kSensorCO2Max);
+    break;
+  }
+  
+  // return new simulated values
+  simulatedTemperatureF = tempF;
+  simulatedHumidity = humidity;
+  simulatedCO2 = co2;
+  simulatedPM25 = PM25;
+  simulatedVOCIndex = VOCIndex;
+  simulatedNOxIndex = NOxIndex;
+
+  debugMessage(String("returning simulated temp: ") + simulatedTemperatureF + "F, humidity: " + simulatedHumidity
+    + "%, CO2: " + simulatedCO2 + "ppm",1);
+  debugMessage(String("returning simulated PM2.5: ") + simulatedPM25 + " ppm, VOC index: " + simulatedVOCIndex,1);
   debugMessage(String("returning simulated noxIndex: ") + simulatedNOxIndex,1);
   
   debugMessage("sensorSEN6xSimulate() end",1);
+}
+
+// Helper function that returns completely random values for all
+// air quality values
+void sensorSimulateRandom(
+  float& simulatedTemperatureF,
+  float& simulatedHumidity,
+  uint16_t& simulatedCO2,
+  float& simulatedPM25,
+  float& simulatedVOCIndex,
+  float& simulatedNOxIndex)
+{
+  debugMessage ("sensorSimulateRandom() start",1);
+
+  simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
+  simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
+  simulatedCO2 = randomFloat(kSensorCO2Min, kSensorCO2Max);
+  simulatedPM25 = randomFloat(kSensorPMMin, kSensorPMMax);
+  simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);
+  simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxMax);
+
+ debugMessage ("sensorSimulateRandom() end",1);
 }
 
 bool sensorSEN6xRead()
@@ -1755,17 +1824,17 @@ bool sensorSEN6xRead()
 // Improvement : Add support for checking isDataReady flag (see SCD40 read)
 {
   bool success = false;
-  float pm25 = 0.0f;
   float temperatureF = 0.0f;
   float humidity = 0.0f;
+  uint16_t co2 = 0;
+  float pm25 = 0.0f;
   float VOCIndex = 0.0f;
   float NOxIndex = 0.0f;
-  uint16_t co2 = 0;
 
   debugMessage ("sensorSEN6xRead() start",1);
 
-  #ifdef HARDWARE_SIMULATE
-    sensorSEN6xSimulate(temperatureF, humidity, co2, pm25, VOCIndex, NOxIndex);
+  #if HARDWARE_SIMULATE
+    sensorSEN6xSimulate(10, temperatureF, humidity, co2, pm25, VOCIndex, NOxIndex);
     success = true;
   #else
     uint16_t error;
@@ -1786,32 +1855,32 @@ bool sensorSEN6xRead()
   #endif
 
   // range valid returned sensor values, even simulation values can be OOB
-  if (co2 < sensorCO2Min || co2 > sensorCO2Max) {
+  if (co2 < kSensorCO2Min || co2 > kSensorCO2Max) {
     success = false;
     debugMessage(String("SEN66 CO2 reading: ") + co2 + " is out of datasheet range",2);
   }
 
-  if (temperatureF < sensorTempFMin || temperatureF > sensorTempFMax) {
+  if (temperatureF < kSensorTempFMin || temperatureF > kSensorTempFMax) {
     success = false;
     debugMessage(String("SEN66 temperatureF reading: ") + temperatureF + " is out of datasheet range",2);
   }
 
-  if (humidity < sensorHumidityMin || humidity > sensorHumidityMax) {
+  if (humidity < kSensorHumidityMin || humidity > kSensorHumidityMax) {
     success = false;
     debugMessage(String("SEN66 humidity reading: ") + humidity + " is out of datasheet range",2);
   }
 
-  if (pm25 < sensorPMMin || pm25 > sensorPMMax) {
+  if (pm25 < kSensorPMMin || pm25 > kSensorPMMax) {
     success = false;
     debugMessage(String("SEN66 PM2.5 reading: ") + pm25 + " is out of datasheet range",2);
   }
 
-  if (VOCIndex < sensorVOCMin || VOCIndex > sensorVOCMax) {
+  if (VOCIndex < kSensorVOCMin || VOCIndex > kSensorVOCMax) {
     success = false;
     debugMessage(String("SEN66 VOC index reading: ") + VOCIndex + " is out of datasheet range",2);
   }
 
-  if (NOxIndex < sensorNOxMin || NOxIndex > sensorNOxMax) {
+  if (NOxIndex < kSensorNOxMin || NOxIndex > kSensorNOxMax) {
     success = false;
     debugMessage(String("SEN66 NOx index reading: ") + NOxIndex + " is out of datasheet range",2);
   }
@@ -1835,264 +1904,6 @@ bool sensorSEN6xRead()
   }
   debugMessage ("sensorSEN6xRead() end",1);
   return (success);
-}
-
-bool sensorSEN54Init()
-{
-  bool success = false;
-
-  debugMessage("sensorSEN54Init() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    success = true;
-  #else
-
-  #endif
-  debugMessage("sensorSEN54Init() end",1);
-  return success;
-}
-
-void sensorSEN54Simulate(float& simulatedPM25, float& simulatedVOCIndex)
-// Description: Simulates sensor reading from SEN54 sensor
-// Parameters: NA
-// Return: NA
-// Improvement: mode 1 from CO2 for VOC
-// Note: tempF and humidity come from SCD4X simulation
-{
-  //float pm1, pm10, pm4 = 0.0f;
-
-  debugMessage("sensorSEN54Simulate() start",1);
-
-  simulatedPM25 = randomFloatRange(sensorPMMin, sensorPMMax);
-  // pm1 = randomFloatRange(sensorPMMin, sensorPMMax);
-  // pm10 = randomFloatRange(sensorPMMin, sensorPMMax);
-  // pm4 = randomFloatRange(sensorPMMin, sensorPMMax);
-  simulatedVOCIndex = randomFloatRange(sensorVOCMin, sensorVOCMax);
-
-  debugMessage(String("returning simulated PM2.5: ") + simulatedPM25 + " ppm, VOC index: " + simulatedVOCIndex,1);
-  debugMessage("sensorSEN54Simulate() end",1);
-}
-
-bool sensorSEN554Read() 
-// Description: Retrieves values from SEN54 sensor
-// Parameters: none
-// Output : range validated pm25 and VOCIndex values, NAN NOxIndex value from SEN54
-// Improvement : Add support for checking isDataReady flag (see SCD40 read) 
-{
-  bool success = false;
-  float pm25 = 0.0f;
-  float VOCIndex = 0.0f;
-  float NOxIndex = 0.0f;
-
-  debugMessage("sensorSEN554Read() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    sensorSEN54Simulate(pm25, VOCIndex);
-    success = true;
-  #else
-    success = true;
-  #endif
-
-  // range valid returned sensor values, even simulation values can be OOB
-  if (pm25 < sensorPMMin || pm25 > sensorPMMax) {
-    success = false;
-    debugMessage(String("SEN5x PM2.5 reading: ") + pm25 + " is out of datasheet range",2);
-  }
-
-  if (VOCIndex < sensorVOCMin || VOCIndex > sensorVOCMax) {
-    success = false;
-    debugMessage(String("SEN5x VOC index reading: ") + VOCIndex + " is out of datasheet range",2);
-  }
-
-  // valid measurement, update globals
-  if (success) {
-    totalPM25.include(pm25);
-    totalVOCIndex.include(VOCIndex);
-    totalNOxIndex.include(NOxIndex);
-
-    debugMessage(String("sensorSEN554Read() updating pm25: ") + totalPM25.getCurrent() + "ppm, total: " + totalPM25.getTotal(),2);
-    debugMessage(String("sensorSEN554Read() updating vocIndex: ") + totalVOCIndex.getCurrent() + ", total: " + totalVOCIndex.getTotal(),2);
-    debugMessage(String("sensorSEN554Read() NOxIndex is NAN"),2);
-  }
-
-  debugMessage("sensorSEN554Read() end",1);
-  return(success);
-}
-
-bool sensorSCD4xInit()
-// initializes SCD4X to read
-{
-  bool success = false;
-
-  debugMessage("sensorSCD4xInit() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    success = true;
-  #else
-    success = true;
-  #endif
-
-  debugMessage("sensorSCD4xInit() end",1);
-  return success;
-}
-
-// Description: Simulates temp, humidity, and CO2 values from Sensirion SCD4X sensor
-// Parameters:
-//  mode
-//    default = random values, ignores cycles parameter
-//    1 = random values, slightly +/- per cycle
-//    2 = out of bounds, "bad" values designed to activate alert modes
-//    3 = rapidly rising values designed to activate sampleEvaluate()
-//  cycles = If used, determines how many times the current mode executes before resetting
-// Output : NA
-// Improvement : rapid CO2 rise mode to test sampleEvaluate()
-void sensorSCD4xSimulate(
-  uint8_t mode,
-  uint8_t cycles,
-  float& simulatedTempF,
-  float& simulatedHumidity,
-  uint16_t& simulatedCO2)
-{
-  static uint8_t currentMode = 0;
-  static uint8_t cycleCount = 0;
-  static float tempF, humidity = 0.0f;
-  static uint16_t co2 = 0;
-
-  debugMessage("sensorSCD4xSimulate() start",1);
-
-  if (mode != currentMode) {
-    cycleCount = 0;
-    currentMode = mode;
-  }
-
-  // random sign used in some modes
-  int8_t sign = random(0, 2) == 0 ? -1 : 1;
-
-  switch (currentMode) {
-  case 0: // 0 = random values, ignores cycles value
-    tempF = randomFloatRange(sensorTempFMin,sensorTempFMax);
-    humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-    co2 = random(sensorCO2Min, sensorCO2Max);
-    break;    
-  case 1: // 1 = random values, slightly +/- per cycle
-    if (cycleCount == cycles) {
-      cycleCount = 0;
-    }
-    if (!cycleCount) {
-      // create new base values
-      tempF = randomFloatRange(sensorTempFMin,sensorTempFMax);
-      humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-      co2 = random(sensorCO2Min, sensorCO2Bad); // starts values in highly likely scenarios
-      cycleCount++;
-    }
-    else
-    {
-      // slightly +/- CO2 value
-      co2 += (sign * random(0, sensorCO2VariabilityRange));
-      tempF += (sign * random(0, 3));
-      humidity += (-sign * random(0,3));
-      cycleCount++;
-    }
-    break;
-  case 2: // 2 = out of bounds, "bad" values designed to activate alert modes
-    tempF = (random(0,2)) ? sensorTempFMin-2 : sensorTempFMax+2;
-    humidity = (random(0,2)) ? sensorHumidityMin-2 : sensorHumidityMax+2;
-    co2 = (random(0,2)) ? sensorCO2Min-2 : sensorCO2Max+2;
-    break;
-  case 3: // rapidly rising values designed to activate sampleEvaluate()
-    if (cycleCount == cycles) {
-      cycleCount = 0;
-    }
-    if (!cycleCount) {
-      // clear the retained CO2 values so they don't affect std dev calculation
-      totalCO2.deleteRetained();
-      // create new base values
-      tempF = randomFloatRange((sensorTempFMin + (3 * cycles)),(sensorTempFMax - (3 * cycles))); // crude buffer for potential cycle movement
-      humidity = randomFloatRange((sensorHumidityMin + (3* cycles)),(sensorHumidityMax - (3 * cycles)));
-      co2 = random(sensorCO2Min, sensorCO2Bad); // vs. sensorCO2Max while produces unrealistic values
-      cycleCount++;
-    }
-    else
-    {
-      // rapidly spike CO2 value
-      co2 += random(kMinSigmaFloor * 2, kMinSigmaFloor * 4);
-      tempF += (sign * random(0, 3));
-      humidity += (-sign * random(0,3));
-      cycleCount++;
-    }
-    break;
-  default: // should not occur; random values, ignores cycles value
-    tempF = randomFloatRange(sensorTempFMin,sensorTempFMax);
-    humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-    co2 = random(sensorCO2Min, sensorCO2Max);
-    break;
-  }
-  simulatedTempF = tempF;
-  simulatedHumidity = humidity;
-  simulatedCO2 = co2;
-  debugMessage(String("returning simulated temp: ") + simulatedTempF + "F, humidity: " + simulatedHumidity
-    + "%, CO2: " + simulatedCO2 + "ppm",1);
-
-  debugMessage("sensorSCD4xSimulate() end",1);
-}
-
-void sensorSCD4xSimulate(
-float& simulatedTempF,
-float& simulatedHumidity,
-uint16_t& simulatedCO2)
-{
-sensorSCD4xSimulate(0, 0, simulatedTempF, simulatedHumidity, simulatedCO2);
-}
-
-bool sensorSCD4xRead()
-// Description: Retrieves values from SCD4x sensor
-// Parameters: none
-// Output : range validated tempF, humidity, and CO2 values from SCD4x
-// Improvement : NA  
-{
-  bool success = false;
-  float temperatureF = 0.0f;
-  float humidity = 0.0f;
-  uint16_t co2 = 0;
-
-  debugMessage("sensorSCD4xRead() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    success = true;
-    sensorSCD4xSimulate(1, 10, temperatureF, humidity, co2);
-  #else
-    success = true;
-  #endif
-
-  // validate returned sensor values, even simulation can generate OOB values
-
-  if (co2 < sensorCO2Min || co2 > sensorCO2Max) {
-    success = false;
-    debugMessage(String("SCD4x CO2 reading: ") + co2 + " is out of datasheet range",2);
-  }
-
-  if (temperatureF < sensorTempFMin || temperatureF > sensorTempFMax) {
-    success = false;
-    debugMessage(String("SCD4x temperatureF reading: ") + temperatureF + " is out of datasheet range",2);
-  }
-
-  if (humidity < sensorHumidityMin || humidity > sensorHumidityMax) {
-    success = false;
-    debugMessage(String("SCD4x humidity reading: ") + humidity + " is out of datasheet range",2);
-  }
-
-  // valid measurement, update globals
-  if (success) {
-    totalTemperatureF.include(temperatureF);
-    totalHumidity.include(humidity);
-    totalCO2.include(co2);
-
-    debugMessage(String("SCD4x temp ") + totalTemperatureF.getCurrent() + "F, total across samples: " + totalTemperatureF.getTotal(),2);
-    debugMessage(String("SCD4x humidity ") + totalHumidity.getCurrent() + ", total across samples: " + totalHumidity.getTotal(),2);
-    debugMessage(String("SCD4x CO2 ") + totalCO2.getCurrent() + "ppm, total: " + totalCO2.getTotal(),2);
-  }
-  debugMessage("sensorSCD4xRead() end",1);
-  return(success);
 }
 
 String deviceGetID(String prefix)
@@ -2119,16 +1930,14 @@ void deviceReboot(String messageText, uint16_t timeAlertMS)
 
   while (millis() - timeRebootStartMS < timeAlertMS)
   {
-    #ifndef HARDWARE_SIMULATE
-      pixels.fill(pixels.Color(255,0,0)); // red
-      pixels.show();
-      ledcWriteTone(pinAudio, audioFrequency);
-      delay(500);
-      pixels.fill(pixels.Color(0,0,0)); // black
-      pixels.show();
-      ledcWriteTone(pinAudio,0);
-      delay(500);
-    #endif
+    pixels.fill(pixels.Color(255,0,0)); // red
+    pixels.show();
+    ledcWriteTone(pinAudio, audioFrequency);
+    delay(500);
+    pixels.fill(pixels.Color(0,0,0)); // black
+    pixels.show();
+    ledcWriteTone(pinAudio,0);
+    delay(500);
   }
   debugMessage("deviceReboot() end",1);
   ESP.restart();
@@ -2290,10 +2099,11 @@ float fmap(float x, float xmin, float xmax, float ymin, float ymax)
   return( ymin + ((x - xmin)*(ymax-ymin)/(xmax - xmin)));
 }
 
-float randomFloatRange(uint16_t min, uint16_t max) {
-  uint16_t randomFixed = random((max-min) * 100 + 1);
-  // return float with 2 decimal precision
-  return min + (randomFixed / 100.0f);
+float randomFloat(uint16_t minValue, uint16_t maxValue) {
+    uint32_t rangeFixed = (uint32_t)(maxValue - minValue) * 100U;
+    uint32_t randomFixed = random(rangeFixed + 1U);
+
+    return minValue + randomFixed / 100.0f;
 }
 
 void ledInit()
@@ -2361,10 +2171,10 @@ uint16_t getWarningColor(uint8_t datatype, float datavalue)
       // Alternatively could explicitly return TFT_GREEN & TFT_YELLOW for temperature 
       // & humidity comfort zones but using warningColor[0] and warningColor[1] provides 
       // configurable consistency with other warning/comfort coloration
-      if( (datavalue < sensorTempFComfortMin) || (datavalue > sensorTempFComfortMax) ) return(warningColor[1]); // "Fair"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(warningColor[1]); // "Fair"
       else return(warningColor[0]);  // "Good"
     case HUM_DATA:
-      if( (datavalue < sensorHumidityComfortMin) || (datavalue > sensorHumidityComfortMax) ) return(warningColor[1]); // "Fair"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(warningColor[1]); // "Fair"
       else return(warningColor[0]); // "Good"
     default:
       return(TFT_WHITE);
@@ -2391,11 +2201,11 @@ uint16_t getWarningTextColor(uint8_t datatype, float datavalue)
       windex = pm25Range(datavalue);
       break;
     case TEMP_DATA:
-      if( (datavalue < sensorTempFComfortMin) || (datavalue > sensorTempFComfortMax) ) windex = 1; // "Fair"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) windex = 1; // "Fair"
       else windex = 0;  // "Good"
       break;
     case HUM_DATA:
-      if( (datavalue < sensorHumidityComfortMin) || (datavalue > sensorHumidityComfortMax) ) windex = 1; // "Fair"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) windex = 1; // "Fair"
       else windex = 0; // "Good"
       break;
     default:
@@ -2413,7 +2223,7 @@ uint16_t getWarningTextColor(uint8_t datatype, float datavalue)
 void debugMessage(String messageText, uint8_t messageLevel)
 // wraps Serial.println as #define conditional
 {
-  #ifdef DEBUG
+  #if DEBUG
     if (messageLevel <= DEBUG) {
       Serial.println(messageText);
       Serial.flush();      // Make sure the message gets output (before any sleeping...)

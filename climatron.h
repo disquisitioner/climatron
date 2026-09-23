@@ -10,9 +10,6 @@
 
   // device data
   struct hdweData {
-    // float batteryPercent;
-    // float batteryVoltage;
-    // float batteryTemperatureF;
     uint8_t rssi; // WiFi RSSI value
     uint16_t altitude;
     float latitude;

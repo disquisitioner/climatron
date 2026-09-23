@@ -373,9 +373,9 @@ uint8_t co2Range(float co2)
 // converts co2 value to index value for labeling and color
 {
   uint8_t co2Range = 
-    (co2 <= sensorCO2Fair) ? 0 :
-    (co2 <= sensorCO2Poor) ? 1 :
-    (co2 <= sensorCO2Bad)  ? 2 : 3;
+    (co2 <= kSensorCO2Fair) ? 0 :
+    (co2 <= kSensorCO2Poor) ? 1 :
+    (co2 <= kSensorCO2Bad)  ? 2 : 3;
 
   debugMessage(String("CO2 input of ") + co2 + " yields CO2 band " + co2Range, 2);
   return co2Range;
@@ -385,9 +385,9 @@ uint8_t pm25Range(float pm25)
 // converts pm25 value to index value for labeling and color
 {
   uint8_t aqi =
-  (pm25 <= sensorPMFair) ? 0 :
-  (pm25 <= sensorPMPoor) ? 1 :
-  (pm25 <= sensorPMBad) ? 2 : 3;
+  (pm25 <= kSensorPMFair) ? 0 :
+  (pm25 <= kSensorPMPoor) ? 1 :
+  (pm25 <= kSensorPMBad) ? 2 : 3;
 
   debugMessage(String("PM2.5 input of ") + pm25 + " yields " + aqi + " aqi",2);
   return aqi;
@@ -397,9 +397,9 @@ uint8_t vocRange(float vocIndex)
 // converts vocIndex value to index value for labeling and color
 {
   uint8_t vocRange =
-  (vocIndex <= sensorVOCFair) ? 0 :
-  (vocIndex <= sensorVOCPoor) ? 1 :
-  (vocIndex <= sensorVOCBad)  ? 2 : 3;
+  (vocIndex <= kSensorVOCFair) ? 0 :
+  (vocIndex <= kSensorVOCPoor) ? 1 :
+  (vocIndex <= kSensorVOCBad)  ? 2 : 3;
 
   debugMessage(String("VOC index input of ") + vocIndex + " yields VOC band " + vocRange,2);
   return vocRange;
@@ -409,9 +409,9 @@ uint8_t noxRange(float noxIndex)
 // converts noxIndex value to index value for labeling and color
 {
   uint8_t noxRange =
-  (noxIndex <= sensorNOxFair) ? 0 :
-  (noxIndex <= sensorNOxPoor) ? 1 :
-  (noxIndex <= sensorNOxBad)  ? 2 : 3;
+  (noxIndex <= kSensorNOxFair) ? 0 :
+  (noxIndex <= kSensorNOxPoor) ? 1 :
+  (noxIndex <= kSensorNOxBad)  ? 2 : 3;
 
   debugMessage(String("NOx index input of ") + noxIndex + " yields NOx band " + noxRange,2);
   return noxRange;
@@ -553,10 +553,10 @@ String getWarningLabel(uint8_t datatype, float datavalue)
       // Alternatively could explicitly return TFT_GREEN & TFT_YELLOW for temperature 
       // & humidity comfort zones but using warningColor[0] and warningColor[1] provides 
       // configurable consistency with other warning/comfort coloration
-      if( (datavalue < sensorTempFComfortMin) || (datavalue > sensorTempFComfortMax) ) return(warningLabel[1]); // "Fair"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(warningLabel[1]); // "Fair"
       else return(warningLabel[0]);  // "Good"
     case HUM_DATA:
-      if( (datavalue < sensorHumidityComfortMin) || (datavalue > sensorHumidityComfortMax) ) return(warningLabel[1]); // "Fair"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(warningLabel[1]); // "Fair"
       else return(warningLabel[0]); // "Good"
     default:
       return(warningLabel[0]);

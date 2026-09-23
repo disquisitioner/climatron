@@ -10,8 +10,8 @@
 // Configuration Step 2: Set network data endpoints
 // #define MQTT     // log sensor data to MQTT broker
 // #define HASSIO_MQTT  // And, if MQTT enabled, with Home Assistant too?
-#define INFLUX // Log data to InfluxDB server
-#define THINGSPEAK  // Log data to ThingSpeak
+// #define INFLUX // Log data to InfluxDB server
+// #define THINGSPEAK  // Log data to ThingSpeak
 
 // Configuration Step 3: Device parameters and hardware-related configuration
 
@@ -34,13 +34,21 @@ constexpr int8_t pinAudio = 26;
 constexpr uint32_t audioFrequency = 1000; // Hz
 constexpr uint8_t  audioResolution = 8;    // bit
 
-// Configuration Step 4: Set debug message output
-// comment out to turn off; 1 = summary, 2 = verbose
+// Configuration Step 4: Set debug message mode
+// Modes
+// 0 = OFF
+// 1 = summary
+// 2 = verbose
 #define DEBUG 2
 
-// Configuration Step 5: Simulate WiFi and sensor hardware, returning random but plausible values.
-// Comment out to turn off
-// #define HARDWARE_SIMULATE
+// Configuration Step 5: Set hardware simulation mode
+// Modes
+// 0 = OFF
+// 1 = random values, ignores cycles parameter
+// 2 = random values, slightly +/- per cycle
+// 3 = out of bounds, "bad" values designed to activate alert modes
+// 4 = rapidly rising values designed to activate sampleEvaluate()
+#define HARDWARE_SIMULATE 1
 
 // Configuration variables that are less likely to require changes
 
@@ -121,45 +129,45 @@ constexpr uint8_t networkRSSIMin = 30; // ESP32 abs(WiFi.RSSI()) spec
 constexpr uint8_t networkRSSIMax = 100;
 
 // tempF value threshholds
-constexpr uint16_t sensorTempFMin =       14; // -10C per SCD40, SEN66 datasheet
-constexpr uint8_t sensorTempFComfortMin = 65;
-constexpr uint8_t sensorTempFComfortMax = 80;
-constexpr uint16_t sensorTempFMax =       122; // 50C per SEN66 datasheet
+constexpr uint16_t kSensorTempFMin =       14; // -10C per SCD40, SEN66 datasheet
+constexpr uint8_t kSensorTempFComfortMin = 65;
+constexpr uint8_t kSensorTempFComfortMax = 80;
+constexpr uint16_t kSensorTempFMax =       122; // 50C per SEN66 datasheet
 
 // humidity value thresholds
-constexpr uint16_t sensorHumidityMin =    0; // RH% per datasheet
-constexpr uint8_t sensorHumidityComfortMin = 40;
-constexpr uint8_t sensorHumidityComfortMax = 60;
-constexpr uint16_t sensorHumidityMax =    100;
+constexpr uint16_t kSensorHumidityMin =    0; // RH% per datasheet
+constexpr uint8_t kSensorHumidityComfortMin = 40;
+constexpr uint8_t kSensorHumidityComfortMax = 60;
+constexpr uint16_t kSensorHumidityMax =    100;
 
 // CO2 value thresholds
-constexpr uint16_t sensorCO2Min =   400;   // in ppm
-constexpr uint16_t sensorCO2Fair =  800;
-constexpr uint16_t sensorCO2Poor =  1200;
-constexpr uint16_t sensorCO2Bad =   1600;
-constexpr uint16_t sensorCO2Max =   5000; // SEN6x raw up to 40000
+constexpr uint16_t kSensorCO2Min =   400;   // in ppm
+constexpr uint16_t kSensorCO2Fair =  800;
+constexpr uint16_t kSensorCO2Poor =  1200;
+constexpr uint16_t kSensorCO2Bad =   1600;
+constexpr uint16_t kSensorCO2Max =   5000; // SEN6x raw up to 40000
 constexpr uint8_t co2SensorReadFailureLimit = 20;
 constexpr uint8_t sensorCO2VariabilityRange = 30;
 constexpr float   kSigmaMultiplier = 2.5f;
 constexpr float   kMinSigmaFloor   = 25.0f; // ppm/sample
 
 // Particulates (pm1, pm2.5, pm4, pm10) value thresholds
-constexpr uint16_t sensorPMMin =  0;  // per datasheet
-constexpr uint16_t sensorPMFair = 25;
-constexpr uint16_t sensorPMPoor = 50;
-constexpr uint16_t sensorPMBad =  150;
-constexpr uint16_t sensorPMMax =  1000; // per SEN54, SEN66 datasheet
+constexpr uint16_t kSensorPMMin =  0;  // per datasheet
+constexpr uint16_t kSensorPMFair = 25;
+constexpr uint16_t kSensorPMPoor = 50;
+constexpr uint16_t kSensorPMBad =  150;
+constexpr uint16_t kSensorPMMax =  1000; // per SEN54, SEN66 datasheet
 
 // VOC (volatile organic compounds) index value thresholds
-constexpr uint16_t  sensorVOCMin =  0;    // per SEN54, SEN66 datasheet
-constexpr uint16_t  sensorVOCFair = 150;
-constexpr uint16_t  sensorVOCPoor = 250;
-constexpr uint16_t  sensorVOCBad =  400;
-constexpr uint16_t  sensorVOCMax =  500;  // per SEN54, SEN66 datasheet
+constexpr uint16_t  kSensorVOCMin =  0;    // per SEN54, SEN66 datasheet
+constexpr uint16_t  kSensorVOCFair = 150;
+constexpr uint16_t  kSensorVOCPoor = 250;
+constexpr uint16_t  kSensorVOCBad =  400;
+constexpr uint16_t  kSensorVOCMax =  500;  // per SEN54, SEN66 datasheet
 
 // NOx (nitrogen oxide) index value thresholds, Sensiron Info_Note_NOx_Index.pdf
-constexpr uint16_t sensorNOxMin =   0;    // per SEN66 datasheet
-constexpr uint16_t sensorNOxFair =  49;
-constexpr uint16_t sensorNOxPoor =  150;
-constexpr uint16_t sensorNOxBad =   300;
-constexpr uint16_t sensorNOxMax =   500;  // per SEN66 datasheet
+constexpr uint16_t kSensorNOxMin =   0;    // per SEN66 datasheet
+constexpr uint16_t kSensorNOxFair =  49;
+constexpr uint16_t kSensorNOxPoor =  150;
+constexpr uint16_t kSensorNOxBad =   300;
+constexpr uint16_t kSensorNOxMax =   500;  // per SEN66 datasheet
