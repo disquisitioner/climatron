@@ -97,14 +97,11 @@ mqtt:
  */
 
 #include "Arduino.h"
-
-// hardware and internet configuration parameters
-#include "config.h"
-#include "climatron.h"  // overall header info for Powered Air Quality
-// private credentials for network, MQTT, weather provider
-#include "secrets.h"
+#include "config.h" // hardware and internet configuration parameters
 
 #if defined MQTT && defined HASSIO_MQTT
+  #include "climatron.h"  // overall header info for Powered Air Quality
+  #include "secrets.h" // private credentials for network, MQTT, weather provider
   // MQTT setup
   #include <PubSubClient.h>
   #include <ArduinoJson.h>

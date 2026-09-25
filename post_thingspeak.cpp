@@ -4,13 +4,13 @@
 */
 
 #include "Arduino.h"
-#include <HTTPClient.h>
-
 #include "config.h"     // hardware and internet configuration parameters
-#include "climatron.h"  // Climatron main header
-#include "secrets.h"    // ThingSpeak private credentials
 
 #ifdef THINGSPEAK
+  #include <HTTPClient.h>
+  #include "climatron.h"  // Climatron main header
+  #include "secrets.h"    // ThingSpeak private credentials
+
   // Shared helper function(s)
   extern void debugMessage(String messageText, uint8_t messageLevel);
 

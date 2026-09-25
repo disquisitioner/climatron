@@ -4,13 +4,12 @@
 */
 
 #include "Arduino.h"
-
 #include "config.h"               // hardware and internet configuration parameters
-#include "climatron.h"  // overall header info for Powered Air Quality
-#include "secrets.h"              // private credentials for network, MQTT, weather provider
 
 // only compile if MQTT enabled
 #ifdef MQTT
+  #include "climatron.h"  // overall header info for Powered Air Quality
+  #include "secrets.h"              // private credentials for network, MQTT, weather provider
   #include <PubSubClient.h>
   extern PubSubClient mqtt;
 
