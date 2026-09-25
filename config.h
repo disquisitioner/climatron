@@ -49,6 +49,7 @@ constexpr uint8_t  audioResolution = 8;    // bit
 // 3 = out of bounds, "bad" values designed to activate alert modes
 // 4 = rapidly rising values designed to activate sampleEvaluate()
 #define HARDWARE_SIMULATE 1
+constexpr uint8_t kSimulationCycles = 10;
 
 // Configuration variables that are less likely to require changes
 
@@ -118,15 +119,13 @@ constexpr uint8_t screenRotation = 3; // CYD 2.8; horizontal orientation with US
 // sensors
 constexpr uint8_t kRequiredRisingDeltas = 3; // minimum samples required to trigger rapid rise alert
 
-// simulation boundary values
-constexpr uint8_t OWMAQIMin = 1;  // https://openweathermap.org/api/air-pollution
-constexpr uint8_t OWMAQIMax = 5;
+// boundary values
+// constexpr uint8_t kOWMAQIMin = 1;  // https://openweathermap.org/api/air-pollution
+// constexpr uint8_t kOWMAQIMax = 5;
 
-constexpr uint16_t OWMPM25Min = 0;
-constexpr uint16_t OWMPM25Max = 100; 
-
-constexpr uint8_t networkRSSIMin = 30; // ESP32 abs(WiFi.RSSI()) spec
-constexpr uint8_t networkRSSIMax = 100;
+constexpr uint8_t kNetworkRSSIMin = 30; // ESP32 abs(WiFi.RSSI()) spec
+constexpr uint8_t kNetworkRSSIMax = 100;
+constexpr uint8_t kNetworkRSSISimVariability = 5; // max RSSI can change per sim cycle
 
 // tempF value threshholds
 constexpr uint16_t kSensorTempFMin =       14; // -10C per SCD40, SEN66 datasheet
@@ -155,9 +154,9 @@ constexpr float   kMinSigmaFloor   = 25.0f; // ppm/sample
 
 // Particulates (pm1, pm2.5, pm4, pm10) value thresholds
 constexpr uint16_t kSensorPMMin =  0;  // per datasheet
-constexpr uint16_t kSensorPMFair = 25;
-constexpr uint16_t kSensorPMPoor = 50;
-constexpr uint16_t kSensorPMBad =  150;
+constexpr uint16_t kSensorPMFair = 10; // in μg/m3, 2024 EPA breakpoints
+constexpr uint16_t kSensorPMPoor = 55;
+constexpr uint16_t kSensorPMBad =  125;
 constexpr uint16_t kSensorPMMax =  1000; // per SEN54, SEN66 datasheet
 constexpr uint8_t kSensorPMSimVariability = 10; // max PM can change per sim cycle
 

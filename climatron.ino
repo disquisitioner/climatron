@@ -696,15 +696,40 @@ void samplePost(uint8_t& numSamples)
   debugMessage(String("samplePost() end"), 1);
 }
 
-uint8_t networkRSSISimulate()
 // Description : returns simulated WiFi RSSI value from hardware or simulation value
 // Parameters: NA
 // Return : NA
 // Improvement : NA
+uint8_t networkRSSISimulate(uint8_t maxCycles)
 { 
-  uint8_t rssi = random(networkRSSIMin, networkRSSIMax);
-  debugMessage(String("returning simulated WiFi RSSI: -") + rssi + "db",1);
-  return(rssi);
+  debugMessage("networkRSSISimulate start()",1);
+  static uint8_t simulatedRSSI = 0;
+  static uint8_t cycleCount = 0;
+
+  switch (HARDWARE_SIMULATE) {
+    case 1: // random values, doesn't use maxCycles
+      simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax);
+      break;
+    case 2: // slight =/- values per cycle up to maxCycles
+      if (cycleCount == 0) {
+        simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax + 1);
+      }
+      else {
+        simulatedRSSI = constrain(
+          simulatedRSSI + randomSignedDelta(kNetworkRSSISimVariability),
+          kNetworkRSSIMin,
+          kNetworkRSSIMax
+        );
+      }
+      cycleCount++;
+      if (cycleCount >= maxCycles)
+        cycleCount = 0;
+      break;
+  }
+
+  debugMessage(String("returning simulated WiFi RSSI: -") + simulatedRSSI + "db",1);
+  debugMessage("networkRSSISimulate end()",1);
+  return(simulatedRSSI);
 }
 
 void networkWiFiManagerBuildParameters()
@@ -1043,7 +1068,7 @@ bool networkWiFiManagerOpen()
     debugMessage("WiFi connection failure; local sensor data ONLY", 1);
     hardwareData.rssi = 255; // 255 indicates no WiFi connection 
     #if HARDWARE_SIMULATE
-      networkRSSISimulate();
+      networkRSSISimulate(kSimulationCycles);
     #endif
   }
   debugMessage("networkWiFiManagerOpen() end", 1);
@@ -1152,7 +1177,7 @@ uint8_t networkRSSIRead()
   uint8_t rssi;
 
   #if HARDWARE_SIMULATE
-    rssi = networkRSSISimulate();
+    rssi = networkRSSISimulate(kSimulationCycles);
   #else
     // attemot to reconnect to WiFi if needed
     if (WiFi.status() != WL_CONNECTED) {
@@ -1559,15 +1584,47 @@ boolean OWMForecastRead()
   return true;
 }
 
-void OWMAirPollutionSimulate()
 // Description : Simulates Open Weather Map (OWM) Air Pollution data
 // Parameters: NA
 // Return : NA
 // Improvement : NA
+void OWMAirPollutionSimulate(uint8_t maxCycles)
 {
-  owmAirQuality.aqi = random(OWMAQIMin, OWMAQIMax);
-  owmAirQuality.pm25 = randomFloat(OWMPM25Min, OWMPM25Max);
-  debugMessage(String("SIMULATED OWM Air Pollution PM2.5: ") + owmAirQuality.pm25 + ", AQI: " + owmAirQuality.aqi,1);
+  debugMessage("OWMAirPollutionSimulate start()",1);
+  //static uint8_t simulatedAQI = 0;
+  static float simulatedPM25 = 0;
+  static uint8_t cycleCount = 0;
+
+  switch (HARDWARE_SIMULATE) {
+    case 1: // random values, doesn't use maxCycles
+      //simulatedAQI = random(kOWMAQIMin, kOWMAQIMax);
+      // map to PM25 sensor value simulation
+      simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+    break;
+    case 2: // slight =/- values per cycle up to maxCycles
+      if (cycleCount == 0) {
+        //simulatedAQI = random(kOWMAQIMin, kOWMAQIMax);
+        // map to PM25 sensor value simulation
+        simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+      }
+      else {
+        // conscience decision not to change AQI, as it's not likely to move > 1 during cycle time
+        simulatedPM25 = clampFloat(simulatedPM25 + randomSignedDelta(kSensorPMSimVariability),
+         kSensorPMMin, (kSensorPMBad + 100));
+      }
+
+      cycleCount++;
+      if (cycleCount >= maxCycles)
+        cycleCount = 0;
+      break;
+  }
+
+  // return simulated values
+  //owmAirQuality.aqi = simulatedAQI;
+  owmAirQuality.pm25 = simulatedPM25;
+  //debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25 + ", AQI: " + simulatedAQI,1);
+  debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25, 1);
+  debugMessage("networkRSSISimulate end()",1);
 }
 
 bool OWMAirPollutionRead()
@@ -1575,7 +1632,7 @@ bool OWMAirPollutionRead()
 {
   debugMessage(String("OWMAirPollutionRead() start"), 1);
   #if HARDWARE_SIMULATE
-    OWMAirPollutionSimulate();
+    OWMAirPollutionSimulate(kSimulationCycles);
     return true;
   #else
     static int32_t timeLastOWMUpdateMS = -(timeOWMRenewMS); // forces immediate sample at first run
@@ -1627,7 +1684,7 @@ bool OWMAirPollutionRead()
 
       // owmAirQuality.lon = (float) doc["coord"]["lon"];
       // owmAirQuality.lat = (float) doc["coord"]["lat"];
-      owmAirQuality.aqi  = doc["list"][0]["main"]["aqi"] | 0;
+      // owmAirQuality.aqi  = doc["list"][0]["main"]["aqi"] | 0;
       // owmAirQuality.co = (float) list_0_components["co"];
       // owmAirQuality.no = (float) list_0_components["no"];
       // owmAirQuality.no2 = (float) list_0_components["no2"];
@@ -1636,7 +1693,7 @@ bool OWMAirPollutionRead()
       owmAirQuality.pm25 = doc["list"][0]["components"]["pm2_5"] | NAN;
       // owmAirQuality.pm10 = (float) list_0_components["pm10"];
       // owmAirQuality.nh3 = (float) list_0_components["nh3"];
-      debugMessage(String("OWM Air Pollution PM2.5 is ") + owmAirQuality.pm25 + "μg/m3, AQI is " + owmAirQuality.aqi + " of 5",1);
+      debugMessage(String("OWM Air Pollution PM2.5 is ") + owmAirQuality.pm25 + "μg/m3",1);
 
       timeLastOWMUpdateMS = millis();
       debugMessage(String("OWMAirPollutionRead() end"),1);
@@ -1697,47 +1754,39 @@ bool sensorSEN6xInit()
 
 // Description: Simulates air quality values from Sensirion SCD6X sensor
 // Parameters:
-//  cycles = If used, determines how many times the current mode executes before resetting
+//  maxCycles = If used, determines how many times the current mode executes before resetting
 // Output : NA
 // Improvement : rapid CO2 rise mode to test sampleEvaluate()
 void sensorSEN6xSimulate(
-  uint8_t cycles,
-  float& simulatedTemperatureF,
-  float& simulatedHumidity,
-  uint16_t& simulatedCO2,
-  float& simulatedPM25,
-  float& simulatedVOCIndex,
-  float& simulatedNOxIndex)
+  uint8_t maxCycles,
+  float& temperatureF,
+  float& humidity,
+  uint16_t& co2,
+  float& pm25,
+  float& VOCIndex,
+  float& NOxIndex)
 {
   debugMessage ("sensorSEN6xSimulate() start",1);
 
-  static uint8_t currentMode = 0;
   static uint8_t cycleCount = 0;
-  static float tempF = 0.0f;
-  static float humidity = 0.0f;
-  static uint16_t co2 = 0;
-  static float PM25 = 0.0f;
-  static float VOCIndex = 0.0f;
-  static float NOxIndex = 0.0f;
-
-  // randomly generated sign used in some modes
-  int8_t sign = random(0, 2) == 0 ? -1 : 1;
+  static float simulatedTempF = 0.0f;
+  static float simulatedHumidity = 0.0f;
+  static uint16_t simulatedCO2 = 0;
+  static float simulatedPM25 = 0.0f;
+  static float simulatedVOCIndex = 0.0f;
+  static float simulatedNOxIndex = 0.0f;
 
   switch (HARDWARE_SIMULATE) {
-  case 1: // 0 = random values every time
-    sensorSimulateRandom(tempF, humidity, co2, PM25, VOCIndex, NOxIndex);
+  case 1: // random values every time
+    sensorSimulateRandom(simulatedTempF, simulatedHumidity, simulatedCO2, simulatedPM25, simulatedVOCIndex, simulatedNOxIndex);
     break;    
-  case 2: // 1 = random values, slightly +/- per cycle
-    if (cycleCount == cycles) {
-      cycleCount = 0;
-    }
-    if (!cycleCount) {
+  case 2: // random values, slightly +/- per cycle
+    if (cycleCount == 0) { 
       // create new base values
-      sensorSimulateRandom(tempF, humidity, co2, PM25, VOCIndex, NOxIndex);
+      sensorSimulateRandom(simulatedTempF, simulatedHumidity, simulatedCO2, simulatedPM25, simulatedVOCIndex, simulatedNOxIndex);
       cycleCount++;
     }
-    else
-    {
+    else {
       // slightly +/- values
       int32_t nextCO2 = (int32_t)co2 + randomSignedDelta(kSensorCO2SimVariability);
       if (nextCO2 < (int32_t)kSensorCO2Min) {
@@ -1746,60 +1795,58 @@ void sensorSEN6xSimulate(
       else if (nextCO2 > (int32_t)kSensorCO2Max) {
           nextCO2 = (int32_t)kSensorCO2Max;
       }
-      co2 = (uint16_t)nextCO2;
+      simulatedCO2 = (uint16_t)nextCO2;
 
-      tempF = clampFloat(tempF + randomSignedDelta(kSensorTempSimVariability), kSensorTempFMin, kSensorTempFMax);
-      humidity = clampFloat(humidity + randomSignedDelta(kSensorHumiditySimVariability), kSensorHumidityMin, kSensorHumidityMax);
-      PM25 = clampFloat(PM25 + randomSignedDelta(kSensorPMSimVariability), kSensorPMMin, kSensorPMMax);
-      VOCIndex = clampFloat(VOCIndex + randomSignedDelta(kSensorVOCSimVariability), kSensorVOCMin, kSensorVOCMax);
-      NOxIndex = clampFloat(NOxIndex + randomSignedDelta(kSensorNOxSimVariability), kSensorNOxMin, kSensorNOxMax);
-
-      cycleCount++;
+      simulatedTempF = clampFloat(simulatedTempF + randomSignedDelta(kSensorTempSimVariability), kSensorTempFMin, kSensorTempFMax);
+      simulatedHumidity = clampFloat(simulatedHumidity + randomSignedDelta(kSensorHumiditySimVariability), kSensorHumidityMin, kSensorHumidityMax);
+      // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
+      simulatedPM25 = clampFloat(simulatedPM25 + randomSignedDelta(kSensorPMSimVariability), kSensorPMMin, (kSensorPMBad + 100));
+      simulatedVOCIndex = clampFloat(simulatedVOCIndex + randomSignedDelta(kSensorVOCSimVariability), kSensorVOCMin, kSensorVOCMax);
+      simulatedNOxIndex = clampFloat(simulatedNOxIndex + randomSignedDelta(kSensorNOxSimVariability), kSensorNOxMin, kSensorNOxMax);
     }
+    cycleCount++;
+    if (cycleCount >= maxCycles)
+      cycleCount = 0;
     break;
   case 3: // 2 = out of bounds, "bad" values designed to activate alert modes
-    tempF = (random(0,2)) ? kSensorTempFMin-2 : kSensorTempFMax+2;
-    humidity = (random(0,2)) ? kSensorHumidityMin-2 : kSensorHumidityMax+2;
-    co2 = (random(0,2)) ? kSensorCO2Min-2 : kSensorCO2Max+2;
+    simulatedTempF = (random(0,2)) ? kSensorTempFMin-2 : kSensorTempFMax+2;
+    simulatedHumidity = (random(0,2)) ? kSensorHumidityMin-2 : kSensorHumidityMax+2;
+    simulatedCO2 = (random(0,2)) ? kSensorCO2Min-2 : kSensorCO2Max+2;
     break;
   case 4: // rapidly rising values designed to activate sampleEvaluate()
-    if (cycleCount == cycles) {
+    if (cycleCount == maxCycles) {
       cycleCount = 0;
     }
     if (!cycleCount) {
       // clear the retained CO2 values so they don't affect std dev calculation
       totalCO2.deleteRetained();
       // create new base values
-      tempF = randomFloat((kSensorTempFMin + (3 * cycles)),(kSensorTempFMax - (3 * cycles))); // crude buffer for potential cycle movement
-      humidity = randomFloat((kSensorHumidityMin + (3* cycles)),(kSensorHumidityMax - (3 * cycles)));
-      co2 = random(kSensorCO2Min, kSensorCO2Bad); // vs. kSensorCO2Max while produces unrealistic values
+      simulatedTempF = randomFloat((kSensorTempFMin + (3 * maxCycles)),(kSensorTempFMax - (3 * maxCycles))); // crude buffer for potential cycle movement
+      simulatedHumidity = randomFloat((kSensorHumidityMin + (3* maxCycles)),(kSensorHumidityMax - (3 * maxCycles)));
+      simulatedCO2 = random(kSensorCO2Min, kSensorCO2Bad); // vs. kSensorCO2Max while produces unrealistic values
       cycleCount++;
     }
     else
     {
       // rapidly spike CO2 value
-      co2 += random(kMinSigmaFloor * 2, kMinSigmaFloor * 4);
-      tempF += (sign * random(0, 3));
-      humidity += (-sign * random(0,3));
+      int8_t sign = random(0, 2) == 0 ? -1 : 1;
+      simulatedCO2 += random(kMinSigmaFloor * 2, kMinSigmaFloor * 4);
+      simulatedTempF += (sign * random(0, 3));
+      simulatedHumidity += (-sign * random(0,3));
       cycleCount++;
     }
-    break;
-  default: // should not occur; random values, ignores cycles value
-    tempF = randomFloat(kSensorTempFMin,kSensorTempFMax);
-    humidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
-    co2 = random(kSensorCO2Min, kSensorCO2Max);
     break;
   }
   
   // return new simulated values
-  simulatedTemperatureF = tempF;
-  simulatedHumidity = humidity;
-  simulatedCO2 = co2;
-  simulatedPM25 = PM25;
-  simulatedVOCIndex = VOCIndex;
-  simulatedNOxIndex = NOxIndex;
+  temperatureF = simulatedTempF;
+  humidity = simulatedHumidity;
+  co2 = simulatedCO2;
+  pm25 = simulatedPM25;
+  VOCIndex = simulatedVOCIndex;
+  NOxIndex = simulatedNOxIndex;
 
-  debugMessage(String("returning simulated temp: ") + simulatedTemperatureF + "F, humidity: " + simulatedHumidity
+  debugMessage(String("returning simulated temp: ") + simulatedTempF + "F, humidity: " + simulatedHumidity
     + "%, CO2: " + simulatedCO2 + "ppm",1);
   debugMessage(String("returning simulated PM2.5: ") + simulatedPM25 + " ppm, VOC index: " + simulatedVOCIndex,1);
   debugMessage(String("returning simulated noxIndex: ") + simulatedNOxIndex,1);
@@ -1822,7 +1869,8 @@ void sensorSimulateRandom(
   simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
   simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
   simulatedCO2 = randomFloat(kSensorCO2Min, kSensorCO2Max);
-  simulatedPM25 = randomFloat(kSensorPMMin, kSensorPMMax);
+  // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
+  simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
   simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);
   simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxMax);
 
@@ -1846,7 +1894,7 @@ bool sensorSEN6xRead()
   debugMessage ("sensorSEN6xRead() start",1);
 
   #if HARDWARE_SIMULATE
-    sensorSEN6xSimulate(10, temperatureF, humidity, co2, pm25, VOCIndex, NOxIndex);
+    sensorSEN6xSimulate(kSimulationCycles, temperatureF, humidity, co2, pm25, VOCIndex, NOxIndex);
     success = true;
   #else
     uint16_t error;
@@ -1899,7 +1947,7 @@ bool sensorSEN6xRead()
 
   // valid measurement, update globals
   if (success) {
-    // Incorporate (and retain) validated measurements for further processing & reporting
+    // retain validated measurements
     totalTemperatureF.include(temperatureF);
     totalHumidity.include(humidity);
     totalCO2.include(co2);

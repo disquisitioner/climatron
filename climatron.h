@@ -94,7 +94,7 @@ extern SiteForecast siteForecast;
 struct OpenWeatherMapAirQuality {
   // float lon;   // longitude
   // float lat;   // latitude
-  uint8_t aqi;   // OWM [list][0].main.aqi : e.g. 1-5, AQI index, composite score of all components, not regionally adjusted
+  // uint8_t aqi;   // OWM [list][0].main.aqi : e.g. 1-5, AQI index, composite score of all components, not regionally adjusted
   // float co;    // carbon monoxide in μg/m3
   // float no;    // nitrogen oxide in μg/m3
   // float no2;   // nitrogen dioxide in μg/m3
