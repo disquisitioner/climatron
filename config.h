@@ -10,8 +10,8 @@
 // Configuration Step 2: Set network data endpoints
 // #define MQTT     // log sensor data to MQTT broker
 // #define HASSIO_MQTT  // And, if MQTT enabled, with Home Assistant too?
-#define INFLUX // Log data to InfluxDB server
-#define THINGSPEAK  // Log data to ThingSpeak
+// #define INFLUX // Log data to InfluxDB server
+// #define THINGSPEAK  // Log data to ThingSpeak
 
 // Configuration Step 3: Device parameters and hardware-related configuration
 

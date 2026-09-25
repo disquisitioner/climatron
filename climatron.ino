@@ -9,6 +9,7 @@
 #include "climatron.h"  // core data structures
 #include "secrets.h"    // private configuration data not stored in github
 #include "data.h"       // data pair configuration
+#include "audio.h"      // asynchronous SPIFFS WAV playback on GPIO 26
 
 #include <HTTPClient.h>           // used to access Open Weather Map
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager
@@ -158,6 +159,13 @@ bool alertScreen = false;
 bool alertLED = false;
 bool alertSound = false;
 
+// WAV assets required by the actual sound-producing alert paths below.
+// /no_sh.wav remains a hardware-test asset and is intentionally not mapped to
+// a production alert.
+constexpr char kWavCO2Rising[] = "/co2_rising.wav";
+constexpr char kWavNoSamples[] = "/no_samples.wav";
+constexpr char kWavReboot[] = "/reboot.wav";
+
 void setup() {
   // config Serial first for debugMessage()
   #ifdef DEBUG
@@ -196,10 +204,18 @@ void setup() {
   // CST820
   touchscreen.begin(&TouchWire);
 
-  // initialize GPIO
+  // initialize button GPIO
   pinMode(pinButton, INPUT_PULLUP);
 
-  ledcAttach(pinAudio, audioFrequency, audioResolution);
+  // GPIO 26 belongs exclusively to the DAC WAV subsystem; do not LEDC-attach it.
+  if (!audioInit()) {
+    debugMessage("WAV audio initialization failed", 1);
+  }
+
+audioSetVolume(100);
+audioPlayWav("/no_sh.wav");
+debugMessage("1",1);
+
 
   // get configuration data before calling sensorInit() to load altitude value
   if(!nvconfigRead()) {
@@ -317,7 +333,9 @@ void loop() {
         alertLED = true;
         pixels.fill(pixels.Color(255,0,0)); // red
         pixels.show();
-        ledcWriteTone(pinAudio, audioFrequency);
+        if (!audioPlayWav(kWavCO2Rising)) {
+          debugMessage(String("Unable to play ") + kWavCO2Rising, 1);
+        }
         display.loadFont(Roboto_Regular_24);
         screenHelperAlert("CO2 rising rapidly", TFT_WHITE,TFT_BLACK,TFT_RED);
         display.unloadFont();
@@ -679,7 +697,9 @@ void samplePost(uint8_t& numSamples)
     alertLED = true;
     pixels.fill(pixels.Color(255,0,0)); // Red
     pixels.show();
-    ledcWriteTone(pinAudio, audioFrequency);
+    if (!audioPlayWav(kWavNoSamples)) {
+      debugMessage(String("Unable to play ") + kWavNoSamples, 1);
+    }
     display.loadFont(Roboto_Regular_24);
     screenHelperAlert("No samples available", TFT_WHITE,TFT_BLACK,TFT_RED);
     display.unloadFont();
@@ -2120,16 +2140,18 @@ void deviceReboot(String messageText, uint16_t timeAlertMS)
   while (millis() - timeRebootStartMS < timeAlertMS)
   {
     #ifndef HARDWARE_SIMULATE
+      if (!audioIsPlaying() && !audioPlayWav(kWavReboot)) {
+        debugMessage(String("Unable to play ") + kWavReboot, 1);
+      }
       pixels.fill(pixels.Color(255,0,0)); // red
       pixels.show();
-      ledcWriteTone(pinAudio, audioFrequency);
       delay(500);
       pixels.fill(pixels.Color(0,0,0)); // black
       pixels.show();
-      ledcWriteTone(pinAudio,0);
       delay(500);
     #endif
   }
+  audioStop();
   debugMessage("deviceReboot() end",1);
   ESP.restart();
 }
@@ -2334,7 +2356,7 @@ void alertHandle() {
         alertLED = false;
       }
       if (alertSound) {
-        ledcWriteTone(pinAudio, 0);
+        audioStop();
         alertSound = false;
       }
       alertLengthMS = 0;
