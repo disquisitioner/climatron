@@ -725,6 +725,9 @@ uint8_t networkRSSISimulate(uint8_t maxCycles)
       if (cycleCount >= maxCycles)
         cycleCount = 0;
       break;
+    case 3: // out of bounds, "bad" values designed to activate alert modes
+      simulatedRSSI = (random(0,2)) ? kNetworkRSSIMin-2 : kNetworkRSSIMax+2;
+      break;
   }
 
   debugMessage(String("returning simulated WiFi RSSI: -") + simulatedRSSI + "db",1);
@@ -1617,6 +1620,9 @@ void OWMAirPollutionSimulate(uint8_t maxCycles)
       if (cycleCount >= maxCycles)
         cycleCount = 0;
       break;
+    case 3: // out of bounds, "bad" values designed to activate alert modes
+      simulatedPM25 = (random(0,2)) ? kSensorPMMin-2 : kSensorPMMax+2;
+      break;
   }
 
   // return simulated values
@@ -1808,10 +1814,13 @@ void sensorSEN6xSimulate(
     if (cycleCount >= maxCycles)
       cycleCount = 0;
     break;
-  case 3: // 2 = out of bounds, "bad" values designed to activate alert modes
+  case 3: // out of bounds, "bad" values designed to activate alert modes
     simulatedTempF = (random(0,2)) ? kSensorTempFMin-2 : kSensorTempFMax+2;
     simulatedHumidity = (random(0,2)) ? kSensorHumidityMin-2 : kSensorHumidityMax+2;
     simulatedCO2 = (random(0,2)) ? kSensorCO2Min-2 : kSensorCO2Max+2;
+    simulatedPM25 = (random(0,2)) ? kSensorPMMin-2 : kSensorPMMax+2;
+    simulatedVOCIndex = (random(0,2)) ? kSensorVOCMin-2 : kSensorVOCMax+2;
+    simulatedNOxIndex = (random(0,2)) ? kSensorNOxMin-2 : kSensorNOxMax+2;
     break;
   case 4: // rapidly rising values designed to activate sampleEvaluate()
     if (cycleCount == maxCycles) {
