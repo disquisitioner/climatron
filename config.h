@@ -28,7 +28,7 @@
 // 3 = out of bounds values every time
 // 4 = rapidly rising value for one characteristic
 // 5 = consistent rise or falling values for one characteristic
-#define HARDWARE_SIMULATE 1
+#define HARDWARE_SIMULATE 3
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
@@ -90,14 +90,14 @@ constexpr uint8_t kSampleCapacity = 10;
 
 #if defined (DEBUG) && !defined (HARDWARE_SIMULATE)
   // time between sensor reads, e.g. samples
-  constexpr uint32_t timeSensorSampleMS = 30000; // minimum inter-sample time for many sensors
+  constexpr uint32_t kTimeSensorSampleMS = 30000; // minimum inter-sample time for many sensors
 #elif defined(DEBUG) && defined (HARDWARE_SIMULATE)
-  constexpr uint32_t timeSensorSampleMS = 10000; // rapid samples for debugging
+  constexpr uint32_t kTimeSensorSampleMS = 10000; // rapid samples for debugging
 #else // Production sample pace
-  constexpr uint32_t timeSensorSampleMS = 60000;
+  constexpr uint32_t kTimeSensorSampleMS = 60000;
 #endif
 // time between samplePost()
-constexpr uint32_t timeReportMS = timeSensorSampleMS * kSampleCapacity;
+constexpr uint32_t timeReportMS = kTimeSensorSampleMS * kSampleCapacity;
 
 constexpr uint8_t reportFailureThreshold = 3; // report attempt failures before UI alert starts
 constexpr uint8_t kRequiredRisingDeltas = 3; // minimum deltas required to trigger rapid rise alert

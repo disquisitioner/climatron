@@ -204,12 +204,11 @@ void screenNOX()
   fgcolor = getWarningTextColor(NOX_DATA,totalNOxIndex.getCurrent());
   screenHelperHeaderBar(fgcolor,bgcolor,"NOx Level");
 
-  // handle sensors without NOx, e.g. SEN54
-  if(isnan(totalNOxIndex.getCurrent())) {
-    display.loadFont(Roboto_Bold_36);
-    display.setTextDatum(MC_DATUM);
+  // If NOxIndex has no values, alert the user
+  if (totalNOxIndex.getStored() == 0) {
+    display.loadFont(Roboto_Regular_18);
     display.setTextColor(TFT_RED, TFT_BLACK, true);
-    display.drawString("Not Available", xCircle, (display.height()/2));
+    display.drawString("No data", (display.width() / 2), (display.height() / 2));
   }
   else {
      // Draw segmented arc showing color ranges and current NOxIndex in one of those ranges

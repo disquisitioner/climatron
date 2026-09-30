@@ -165,7 +165,7 @@ void setup() {
     // wait for serial port connection
     while (!Serial);
     // Display key configuration parameters
-    debugMessage(String("Starting Climatron with ") + (timeSensorSampleMS/1000) + String(" second sample interval"),1);
+    debugMessage(String("Starting Climatron with ") + (kTimeSensorSampleMS/1000) + String(" second sample interval"),1);
     #if defined(MQTT) || defined(INFLUX) || defined(HASSIO_MQTT) || defined(THINGSPEAK)
       debugMessage(String("Report interval is ") + (timeReportMS/60000) + " minutes",1);
     #endif
@@ -224,7 +224,7 @@ void setup() {
 
 void loop() {
   static uint8_t numSamples               = 0;  // Number of sensor readings over reporting interval
-  static uint32_t timeLastSampleMS        = -(timeSensorSampleMS); // forces immediate sample in loop() 
+  static uint32_t timeLastSampleMS        = -(kTimeSensorSampleMS); // forces immediate sample in loop() 
   static uint32_t timeLastInputMS         = millis();  // timestamp for last user input (screensaver)
   uint16_t calibratedX, calibratedY;
 
@@ -302,7 +302,7 @@ void loop() {
   checkButtonPress();
 
     // is it time to read the sensor?
-  if ((millis() - timeLastSampleMS) >= timeSensorSampleMS) {
+  if ((millis() - timeLastSampleMS) >= kTimeSensorSampleMS) {
     // Read sensor(s)
     if (sensorSEN6xRead()) {
       numSamples++;
@@ -312,7 +312,7 @@ void loop() {
       sampleEvaluate();
     }
     else {
-      alertInitiate(5000, true, false, false, "Sensor read fail");
+      alertInitiate(kTimeSensorSampleMS, true, false, false, "Sensor read fail");
     }
     // Save last sample time
     timeLastSampleMS = millis();
@@ -478,32 +478,26 @@ void sampleEvaluate()
 {
   debugMessage(String("sampleEvaluate() start"), 1);
 
-  sampleEvaluateRapidRise(
-    totalTemperatureF,
-    kSensorTempVariability);
+  if (sampleEvaluateRapidRise(totalTemperatureF, kSensorTempVariability))
+      alertInitiate(5000, true, true, true, "Temperature rising rapidly");
 
-  sampleEvaluateRapidRise(
-      totalHumidity,
-      kSensorHumidityVariability);
+  if (sampleEvaluateRapidRise(totalHumidity, kSensorHumidityVariability))
+    alertInitiate(5000, true, true, true, "Humidity rising rapidly");
 
   if (sampleEvaluateRapidRise(totalCO2, kSensorCO2Variability))
     alertInitiate(5000, true, true, true, "CO2 rising rapidly");
 
-  sampleEvaluateRapidRise(
-      totalPM25,
-      kSensorPMVariability);
+  if(sampleEvaluateRapidRise(totalPM25, kSensorPMVariability))
+    alertInitiate(5000, true, true, true, "PM25 rising rapidly");
 
-  sampleEvaluateRapidRise(
-      totalVOCIndex,
-      kSensorVOCVariability);
+  if(sampleEvaluateRapidRise(totalVOCIndex, kSensorVOCVariability))
+    alertInitiate(5000, true, true, true, "VOC rising rapidly");
 
-  sampleEvaluateRapidRise(
-      totalNOxIndex,
-      kSensorNOxVariability);
+  if(sampleEvaluateRapidRise(totalNOxIndex, kSensorNOxVariability))
+      alertInitiate(5000, true, true, true, "NOx rising rapidly");
 
   debugMessage(String("sampleEvaluate() end"),1);
 }
-
 
 bool sampleEvaluateRapidRise(
     Measure<kSampleCapacity>& samples,
@@ -1588,7 +1582,7 @@ void OWMAirPollutionSimulate(uint8_t maxCycles)
       }
       else {
         // conscience decision not to change AQI, as it's not likely to move > 1 during cycle time
-        simulatedPM25 = clampFloat(simulatedPM25 + randomSignedDelta(kSensorPMVariability),
+        simulatedPM25 = clampFloat(simulatedPM25 + randomFloatDelta(kSensorPMVariability),
          kSensorPMMin, (kSensorPMBad + 100));
       }
 
@@ -1606,20 +1600,20 @@ void OWMAirPollutionSimulate(uint8_t maxCycles)
   owmAirQuality.pm25 = simulatedPM25;
   //debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25 + ", AQI: " + simulatedAQI,1);
   debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25, 1);
-  debugMessage("networkRSSISimulate end()",1);
+  debugMessage(String("networkRSSISimulate end()"),1);
 }
 
 bool OWMAirPollutionRead()
 // stores local air pollution info from Open Weather Map in environment global
 {
   debugMessage(String("OWMAirPollutionRead() start"), 1);
+
   #if HARDWARE_SIMULATE
     OWMAirPollutionSimulate(kSimulationCycles);
     return true;
   #else
     static int32_t timeLastOWMUpdateMS = -(timeOWMRenewMS); // forces immediate sample at first run
     
-    debugMessage(String("OWMAirPollutionRead() start"),1);
     // is it time for new OWM data?
     if (millis() - timeLastOWMUpdateMS > timeOWMRenewMS)
     {
@@ -1732,6 +1726,86 @@ bool sensorSEN6xInit()
       delay(12000);
       return true;
   #endif
+}
+
+// Helper function that returns completely random values for all
+// air quality values
+void sensorSimulateRandom(
+  float& simulatedTemperatureF,
+  float& simulatedHumidity,
+  uint16_t& simulatedCO2,
+  float& simulatedPM25,
+  float& simulatedVOCIndex,
+  float& simulatedNOxIndex)
+{
+  debugMessage ("sensorSimulateRandom() start",1);
+
+  simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
+  simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
+  simulatedCO2 = randomFloat(kSensorCO2Min, kSensorCO2Max);
+  // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
+  simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+  simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);
+  simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxMax);
+
+ debugMessage ("sensorSimulateRandom() end",1);
+}
+
+void sensorSimulateVary(
+    float& simulatedTemperatureF,
+    float& simulatedHumidity,
+    uint16_t& simulatedCO2,
+    float& simulatedPM25,
+    float& simulatedVOCIndex,
+    float& simulatedNOxIndex,
+    kSensorType exclude = SENSOR_NONE)
+{
+    if (exclude != SENSOR_TEMP) {
+        simulatedTemperatureF = clampFloat(
+            simulatedTemperatureF + randomFloatDelta(kSensorTempVariability),
+            kSensorTempFMin,
+            kSensorTempFMax);
+    }
+
+    if (exclude != SENSOR_HUMIDITY) {
+        simulatedHumidity = clampFloat(
+            simulatedHumidity + randomFloatDelta(kSensorHumidityVariability),
+            kSensorHumidityMin,
+            kSensorHumidityMax);
+    }
+
+    if (exclude != SENSOR_CO2) {
+        int32_t nextCO2 =
+            (int32_t)simulatedCO2 + randomSignedDelta(kSensorCO2Variability);
+
+        simulatedCO2 = (uint16_t)constrain(
+            nextCO2,
+            (int32_t)kSensorCO2Min,
+            (int32_t)kSensorCO2Max);
+    }
+
+    if (exclude != SENSOR_PM25) {
+        // Conscious decision to limit PM2.5 to Bad + 100 vs. Max
+        // to return a better value distribution.
+        simulatedPM25 = clampFloat(
+            simulatedPM25 + randomFloatDelta(kSensorPMVariability),
+            kSensorPMMin,
+            kSensorPMBad + 100);
+    }
+
+    if (exclude != SENSOR_VOC) {
+        simulatedVOCIndex = clampFloat(
+            simulatedVOCIndex + randomFloatDelta(kSensorVOCVariability),
+            kSensorVOCMin,
+            kSensorVOCMax);
+    }
+
+    if (exclude != SENSOR_NOX) {
+        simulatedNOxIndex = clampFloat(
+            simulatedNOxIndex + randomFloatDelta(kSensorNOxVariability),
+            kSensorNOxMin,
+            kSensorNOxMax);
+    }
 }
 
 // Description: Simulates air quality values from Sensirion SCD6X sensor
@@ -1985,86 +2059,6 @@ void sensorSEN6xSimulate(
   debugMessage(String("returning simulated noxIndex: ") + simulatedNOxIndex,1);
   
   debugMessage("sensorSEN6xSimulate() end",1);
-}
-
-// Helper function that returns completely random values for all
-// air quality values
-void sensorSimulateRandom(
-  float& simulatedTemperatureF,
-  float& simulatedHumidity,
-  uint16_t& simulatedCO2,
-  float& simulatedPM25,
-  float& simulatedVOCIndex,
-  float& simulatedNOxIndex)
-{
-  debugMessage ("sensorSimulateRandom() start",1);
-
-  simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
-  simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
-  simulatedCO2 = randomFloat(kSensorCO2Min, kSensorCO2Max);
-  // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
-  simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
-  simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);
-  simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxMax);
-
- debugMessage ("sensorSimulateRandom() end",1);
-}
-
-void sensorSimulateVary(
-    float& simulatedTemperatureF,
-    float& simulatedHumidity,
-    uint16_t& simulatedCO2,
-    float& simulatedPM25,
-    float& simulatedVOCIndex,
-    float& simulatedNOxIndex,
-    kSensorType exclude = SENSOR_NONE)
-{
-    if (exclude != SENSOR_TEMP) {
-        simulatedTemperatureF = clampFloat(
-            simulatedTemperatureF + randomSignedDelta(kSensorTempVariability),
-            kSensorTempFMin,
-            kSensorTempFMax);
-    }
-
-    if (exclude != SENSOR_HUMIDITY) {
-        simulatedHumidity = clampFloat(
-            simulatedHumidity + randomSignedDelta(kSensorHumidityVariability),
-            kSensorHumidityMin,
-            kSensorHumidityMax);
-    }
-
-    if (exclude != SENSOR_CO2) {
-        int32_t nextCO2 =
-            (int32_t)simulatedCO2 + randomSignedDelta(kSensorCO2Variability);
-
-        simulatedCO2 = (uint16_t)constrain(
-            nextCO2,
-            (int32_t)kSensorCO2Min,
-            (int32_t)kSensorCO2Max);
-    }
-
-    if (exclude != SENSOR_PM25) {
-        // Conscious decision to limit PM2.5 to Bad + 100 vs. Max
-        // to return a better value distribution.
-        simulatedPM25 = clampFloat(
-            simulatedPM25 + randomSignedDelta(kSensorPMVariability),
-            kSensorPMMin,
-            kSensorPMBad + 100);
-    }
-
-    if (exclude != SENSOR_VOC) {
-        simulatedVOCIndex = clampFloat(
-            simulatedVOCIndex + randomSignedDelta(kSensorVOCVariability),
-            kSensorVOCMin,
-            kSensorVOCMax);
-    }
-
-    if (exclude != SENSOR_NOX) {
-        simulatedNOxIndex = clampFloat(
-            simulatedNOxIndex + randomSignedDelta(kSensorNOxVariability),
-            kSensorNOxMin,
-            kSensorNOxMax);
-    }
 }
 
 bool sensorSEN6xRead()
@@ -2358,6 +2352,11 @@ float randomFloat(uint16_t minValue, uint16_t maxValue) {
 
 int32_t randomSignedDelta(int32_t range) {
     return random(-range, range + 1);
+}
+
+float randomFloatDelta(float range) {
+    int32_t rangeFixed = (int32_t)(fabsf(range) * 100.0f);
+    return random(-rangeFixed, rangeFixed + 1) / 100.0f;
 }
 
 float clampFloat(float value, float minValue, float maxValue) {
