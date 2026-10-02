@@ -28,7 +28,7 @@
 // 3 = out of bounds values every time
 // 4 = rapidly rising value for one characteristic
 // 5 = consistent rise or falling values for one characteristic
-#define HARDWARE_SIMULATE 3
+#define HARDWARE_SIMULATE 4
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
@@ -61,9 +61,9 @@ constexpr uint8_t screenBLMax = 255;
 constexpr uint8_t screenBLLow  = 52;   // 255 * 0.20
 
 // warnings
-const String warningLabel[4]={"Good", "Fair", "Poor", "Bad"};
+const String kWarningLabel[4]={"Good", "Fair", "Poor", "Bad"};
 // Subjective color scheme using 16 bit ('565') RGB colors
-constexpr uint16_t warningColor[4] = {
+constexpr uint16_t kWarningColor[4] = {
     0x07E0, // Green = "Good"
     0xFFE0, // Yellow = "Fair"
     0xFD20, // Orange = "Poor"

@@ -689,9 +689,10 @@ uint8_t networkRSSISimulate(uint8_t maxCycles)
 
   switch (HARDWARE_SIMULATE) {
     case 1: // random values, doesn't use maxCycles
-      simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax);
+      simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax + 1);
       break;
-    case 2: // slight =/- values per cycle up to maxCycles
+    case 2:
+    default: // slight =/- values per cycle up to maxCycles
       if (cycleCount == 0) {
         simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax + 1);
       }
@@ -1836,7 +1837,8 @@ void sensorSEN6xSimulate(
   case 1: // random values every time
     sensorSimulateRandom(simulatedTempF, simulatedHumidity, simulatedCO2, simulatedPM25, simulatedVOCIndex, simulatedNOxIndex);
     break;    
-  case 2: // random starting values, slightly +/- per cycle
+  case 2:
+  default: // random starting values, slightly +/- per cycle
     if (cycleCount == 0) {
       // create new base values
       sensorSimulateRandom(
@@ -2041,8 +2043,6 @@ void sensorSEN6xSimulate(
         cycleCount = 0;
     break;
   }
-  default:
-    break;
 }
   
   // return new simulated values
@@ -2441,22 +2441,22 @@ uint16_t getWarningColor(uint8_t datatype, float datavalue)
 {
   switch(datatype) {
     case CO2_DATA:
-      return(warningColor[co2Range(datavalue)]);
+      return(kWarningColor[co2Range(datavalue)]);
     case VOC_DATA:
-      return(warningColor[vocRange(datavalue)]);
+      return(kWarningColor[vocRange(datavalue)]);
     case NOX_DATA:
-      return(warningColor[noxRange(datavalue)]);
+      return(kWarningColor[noxRange(datavalue)]);
     case PM_DATA:
-      return(warningColor[pm25Range(datavalue)]);
+      return(kWarningColor[pm25Range(datavalue)]);
     case TEMP_DATA:
       // Alternatively could explicitly return TFT_GREEN & TFT_YELLOW for temperature 
-      // & humidity comfort zones but using warningColor[0] and warningColor[1] provides 
+      // & humidity comfort zones but using kWarningColor[0] and kWarningColor[1] provides 
       // configurable consistency with other warning/comfort coloration
-      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(warningColor[1]); // "Fair"
-      else return(warningColor[0]);  // "Good"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(kWarningColor[1]); // "Fair"
+      else return(kWarningColor[0]);  // "Good"
     case HUM_DATA:
-      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(warningColor[1]); // "Fair"
-      else return(warningColor[0]); // "Good"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(kWarningColor[1]); // "Fair"
+      else return(kWarningColor[0]); // "Good"
     default:
       return(TFT_WHITE);
   }

@@ -68,18 +68,18 @@ void screenPM25()
   constexpr uint16_t  yPMCircles = 150;
   constexpr uint16_t  circleRadius = 65;
   constexpr uint16_t circleInnerRadius = circleRadius * 8 / 10;
-  uint16_t fgcolor, bgcolor;
+  uint16_t foregroundTextColor, backgroundColor, warningColor;
 
   debugMessage("screenPM25() start",1);
 
   // Draw header bar using appropriate color scheme
-  bgcolor = TFT_DARKGREY;
-  fgcolor = TFT_WHITE;
+  backgroundColor = TFT_DARKGREY;
+  foregroundTextColor = TFT_WHITE;
 
-  screenHelperHeaderBar(fgcolor,bgcolor,"PM 2.5");
+  screenHelperHeaderBar(foregroundTextColor, backgroundColor, "PM 2.5");
 
   // vertical separator for indoor/outdoor
-  display.drawFastVLine((display.width() / 2), kYStatusRegion, display.height(), bgcolor);
+  display.drawFastVLine((display.width() / 2), kYStatusRegion, display.height(), backgroundColor);
 
   // indoor/outdoor labels
   display.loadFont(Roboto_Regular_24);
@@ -91,17 +91,19 @@ void screenPM25()
   display.setTextDatum(MC_DATUM);
 
   // Indoor
-  display.drawSmoothArc(xIndoorPMCircle, yPMCircles, circleRadius, circleInnerRadius, 0, 360, getWarningColor(PM_DATA, totalPM25.getCurrent()), TFT_BLACK);
+  warningColor = getWarningColor(PM_DATA, totalPM25.getCurrent());
+  display.drawSmoothArc(xIndoorPMCircle, yPMCircles, circleRadius, circleInnerRadius, 0, 360, warningColor, TFT_BLACK);
   // value and label inside the circle
   display.loadFont(Roboto_Bold_36);
-  display.setTextColor(getWarningColor(PM_DATA,totalPM25.getCurrent()), TFT_BLACK, true);  // Use highlight color look-up
+  display.setTextColor(warningColor, TFT_BLACK, true);
   display.drawFloat(totalPM25.getCurrent(), 1, xIndoorPMCircle, yPMCircles);
   
   // Outside
   if (OWMAirPollutionRead()) {
-    display.drawSmoothArc(xOutdoorPMCircle, yPMCircles, circleRadius, circleInnerRadius, 0, 360, getWarningColor(PM_DATA,owmAirQuality.pm25), TFT_BLACK);
+    warningColor = getWarningColor(PM_DATA,owmAirQuality.pm25);
+    display.drawSmoothArc(xOutdoorPMCircle, yPMCircles, circleRadius, circleInnerRadius, 0, 360, warningColor, TFT_BLACK);
     // value and label inside the circle
-    display.setTextColor(getWarningColor(PM_DATA,owmAirQuality.pm25), TFT_BLACK, true); // Use highlight color look-up 
+    display.setTextColor(warningColor, TFT_BLACK, true); 
     display.drawFloat(owmAirQuality.pm25, 1, xOutdoorPMCircle, yPMCircles);
   }
   else
@@ -119,13 +121,17 @@ void screenVOC()
   const uint16_t yCircle = (display.height()*4/5);
   const uint16_t xValue = xCircle;
   const uint16_t yValue = yCircle - 50;
-  uint16_t fgcolor, bgcolor;
+  uint16_t foregroundColor;
+  uint8_t warningIndex;
+  uint16_t warningColor;
 
   debugMessage("screenVOC() start",1);
 
-  bgcolor = getWarningColor(VOC_DATA,totalVOCIndex.getCurrent());
-  fgcolor = getWarningTextColor(VOC_DATA,totalVOCIndex.getCurrent());
-  screenHelperHeaderBar(fgcolor,bgcolor,"VOC Level");
+  warningIndex = vocRange(totalVOCIndex.getCurrent());
+  warningColor = kWarningColor[warningIndex];
+  foregroundColor = getWarningTextColor(VOC_DATA,totalVOCIndex.getCurrent());
+
+  screenHelperHeaderBar(foregroundColor,warningColor,"VOC Level");
 
   display.setTextDatum(MC_DATUM);
 
@@ -137,31 +143,72 @@ void screenVOC()
   }
   else {
     // Draw segmented arc showing color range and current VOCIndex in that range
-    arcMeter(xCircle,yCircle,display.width(),vocRange(totalVOCIndex.getCurrent()));
+    arcMeter(xCircle,yCircle,display.width(),warningIndex);
 
     // Display VOCIndex value and label inside the arc
     display.loadFont(Roboto_Bold_60);
-    display.setTextColor(getWarningColor(VOC_DATA,totalVOCIndex.getCurrent()), TFT_BLACK, true);  // Use highlight color look-up 
+    display.setTextColor(warningColor, TFT_BLACK, true); 
     display.drawFloat((totalVOCIndex.getCurrent() +.5), 0, xValue, yValue);
     display.loadFont(Roboto_Regular_24);
     display.setTextColor(TFT_WHITE, TFT_BLACK, true);
-    display.drawString(getWarningLabel(VOC_DATA,totalVOCIndex.getCurrent()), xValue, yCircle);
+    display.drawString(kWarningLabel[warningIndex], xValue, yCircle);
   }
   display.unloadFont();
   debugMessage("screenVOC() end",1);
+}
+
+void screenNOX()
+{
+  // screen layout assists in pixels
+  const uint16_t xCircle = (display.width()/2);
+  const uint16_t yCircle = (display.height()*4/5);
+  const uint16_t xValue = xCircle;
+  const uint16_t yValue = yCircle - 50;
+  uint16_t foregroundColor;
+  uint8_t warningIndex;
+  uint16_t warningColor;
+
+  debugMessage("screenNOX() start",1);
+
+  warningIndex = noxRange(totalNOxIndex.getCurrent());
+  warningColor = kWarningColor[warningIndex];
+  foregroundColor = getWarningTextColor(NOX_DATA, totalNOxIndex.getCurrent());
+  screenHelperHeaderBar(foregroundColor, warningColor, "NOx Level");
+
+  // If NOxIndex has no values, alert the user
+  if (totalNOxIndex.getStored() == 0) {
+    display.loadFont(Roboto_Regular_18);
+    display.setTextColor(TFT_RED, TFT_BLACK, true);
+    display.drawString("No data", (display.width() / 2), (display.height() / 2));
+  }
+  else {
+    // Draw segmented arc showing color ranges and current NOxIndex in one of those ranges
+    arcMeter(xCircle, yCircle, display.width(), warningIndex);
+
+    // NOx value and label inside the arc
+    display.loadFont(Roboto_Bold_60);
+    display.setTextDatum(MC_DATUM);
+    display.setTextColor(warningColor, TFT_BLACK, true);
+    display.drawFloat((totalNOxIndex.getCurrent() +.5), 0, xValue, yValue);
+    display.loadFont(Roboto_Regular_24);
+    display.setTextColor(TFT_WHITE, TFT_BLACK, true);
+    display.drawString(kWarningLabel[warningIndex], xValue, yCircle);
+  }
+  display.unloadFont();
+  debugMessage("screenNOX() end",1);
 }
 
 void screenCO2()
 {
   // screen layout assist(s) in pixels
   const uint16_t yValue = (display.height()*2/5);
-  uint16_t fgcolor, bgcolor;
+  uint16_t foregroundColor, warningColor;
 
   debugMessage("screenCO2() start",1);
 
-  bgcolor = getWarningColor(CO2_DATA,totalCO2.getCurrent());
-  fgcolor = getWarningTextColor(CO2_DATA,totalCO2.getCurrent());
-  screenHelperHeaderBar(fgcolor,bgcolor,"Recent CO2 Values");
+  warningColor = getWarningColor(CO2_DATA,totalCO2.getCurrent());
+  foregroundColor = getWarningTextColor(CO2_DATA,totalCO2.getCurrent());
+  screenHelperHeaderBar(foregroundColor, warningColor, "Recent CO2 Values");
 
   display.loadFont(Roboto_Regular_36);
 
@@ -174,7 +221,7 @@ void screenCO2()
   else {
     // display generalized CO₂ level
     display.setTextDatum(BL_DATUM);
-    display.setTextColor(getWarningColor(CO2_DATA,totalCO2.getCurrent()), TFT_BLACK, true);
+    display.setTextColor(warningColor, TFT_BLACK, true);
     display.drawString(getWarningLabel(CO2_DATA,totalCO2.getCurrent()),kXMargins, yValue - 3);
 
     // display current CO₂ value
@@ -189,45 +236,7 @@ void screenCO2()
   debugMessage("screenCO2() end",1);
 }
 
-void screenNOX()
-{
-  // screen layout assists in pixels
-  const uint16_t xCircle = (display.width()/2);
-  const uint16_t yCircle = (display.height()*4/5);
-  const uint16_t xValue = xCircle;
-  const uint16_t yValue = yCircle - 50;
-  uint16_t fgcolor, bgcolor;
-
-  debugMessage("screenNOX() start",1);
-
-  bgcolor = getWarningColor(NOX_DATA,totalNOxIndex.getCurrent());
-  fgcolor = getWarningTextColor(NOX_DATA,totalNOxIndex.getCurrent());
-  screenHelperHeaderBar(fgcolor,bgcolor,"NOx Level");
-
-  // If NOxIndex has no values, alert the user
-  if (totalNOxIndex.getStored() == 0) {
-    display.loadFont(Roboto_Regular_18);
-    display.setTextColor(TFT_RED, TFT_BLACK, true);
-    display.drawString("No data", (display.width() / 2), (display.height() / 2));
-  }
-  else {
-     // Draw segmented arc showing color ranges and current NOxIndex in one of those ranges
-    arcMeter(xCircle,yCircle,display.width(),noxRange(totalNOxIndex.getCurrent()) );
-
-    // NOx value and label inside the arc
-    display.loadFont(Roboto_Bold_60);
-    display.setTextDatum(MC_DATUM);
-    display.setTextColor(getWarningColor(NOX_DATA,totalNOxIndex.getCurrent()), TFT_BLACK, true);  // Use highlight color look-up 
-    display.drawFloat((totalNOxIndex.getCurrent() +.5), 0, xValue, yValue);
-    display.loadFont(Roboto_Regular_24);
-    display.setTextColor(TFT_WHITE, TFT_BLACK, true);
-    display.drawString(getWarningLabel(NOX_DATA,totalNOxIndex.getCurrent()), xValue, yCircle);
-  }
-  display.unloadFont();
-  debugMessage("screenNOX() end",1);
-}
-
-void screenHelperHeaderBar(uint16_t fgcolor, uint16_t bgcolor, String header)
+void screenHelperHeaderBar(uint16_t foregroundColor, uint16_t bgcolor, String header)
 {
   // screen layout assists in pixels
   const uint8_t yStatusRegionFloor = kYStatusRegion - 7;
@@ -238,7 +247,7 @@ void screenHelperHeaderBar(uint16_t fgcolor, uint16_t bgcolor, String header)
   constexpr uint8_t wifiBarSpacing = 5;
   constexpr uint8_t kIconHeight = 20;
   constexpr uint8_t kIconWidth = 20;
-  uint16_t iconfgcolor;
+  uint16_t iconforegroundColor;
 
   debugMessage("screenHelperHeaderBar() start",1);
 
@@ -249,7 +258,7 @@ void screenHelperHeaderBar(uint16_t fgcolor, uint16_t bgcolor, String header)
   // Draw header bar background and set matching text color based on
   // values passed in
   display.fillRect(0,0,display.width(),kYStatusRegion, bgcolor);
-  display.setTextColor(fgcolor, bgcolor, true);
+  display.setTextColor(foregroundColor, bgcolor, true);
 
   // screen helpers in status region
   // screenHelperWiFiStatus((display.width() - kXMargins - ((5*wifiBarWidth)+(4*wifiBarSpacing))), yStatusRegionFloor, wifiBarWidth, wifiBarHeightIncrement, wifiBarSpacing);
@@ -259,16 +268,16 @@ void screenHelperHeaderBar(uint16_t fgcolor, uint16_t bgcolor, String header)
     if ((timeLastReportMS == 0) || ((millis() - timeLastReportMS) >= (timeReportMS * reportFailureThreshold))) {
       // we haven't successfully written to a network endpoint at all or before the reportFailureThreshold
       // display.drawBitmap(initialX, initialY, checkmark_12x15, 12, 15, TFT_BLACK);
-      iconfgcolor = TFT_RED;
+      iconforegroundColor = TFT_RED;
       debugMessage(String("Post status in header bar is false"),2);
     }
     else {
-      iconfgcolor = TFT_BLACK;
+      iconforegroundColor = TFT_BLACK;
       //display.drawiBtmap(initialX, initialY, checkmark_12x15, 12, 15, TFT_BLACK);
       debugMessage(String("Post status in header bar is true"),2);
     }
-    //screenHelperPostStatus(((display.width() - kXMargins - ((5*wifiBarWidth)+(4*wifiBarSpacing)))-(kHelperXSpacing + kIconWidth)), (yStatusRegionFloor-kIconHeight), fgColor, bgColor);
-    screenHelperPostStatus((display.width() - kXMargins - (2 * kIconWidth) - kHelperXSpacing), (kYStatusRegion-24), iconfgcolor, bgcolor);
+    //screenHelperPostStatus(((display.width() - kXMargins - ((5*wifiBarWidth)+(4*wifiBarSpacing)))-(kHelperXSpacing + kIconWidth)), (yStatusRegionFloor-kIconHeight), foregroundColor, bgColor);
+    screenHelperPostStatus((display.width() - kXMargins - (2 * kIconWidth) - kHelperXSpacing), (kYStatusRegion-24), iconforegroundColor, bgcolor);
   #endif
 
   // header bar label
@@ -339,7 +348,7 @@ void screenHelperWiFiStatus(uint16_t x, uint16_t y, uint16_t bgColor)
   debugMessage("screenHelperWiFiStatus() end",1);
 }
 
-void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t fgColor, uint16_t bgColor) 
+void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t foregroundColor, uint16_t bgColor) 
 {
   debugMessage(String("screenHelperPostStatus() start"), 1); 
 
@@ -359,10 +368,10 @@ void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t fgColor, uint16_t b
     float theta;
 
     theta = 180.0*atan(((float)W)/(H))/PI;
-    display.drawSmoothArc(cx,cy+(H/2),H+4,0,180-theta,180+theta,fgColor,bgColor,false);
-    display.drawSmoothArc(cx,cy-(H/2),H+4,0,360-theta,theta    ,fgColor,bgColor,false);
-    display.fillRect(cx-W-1,cy-(H/2),2*(W+1)+1,H,fgColor);
-    display.drawSmoothArc(cx,cy-H-4,H+4,H+3,360-theta,theta,bgColor,fgColor,false);
+    display.drawSmoothArc(cx,cy+(H/2),H+4,0,180-theta,180+theta,foregroundColor,bgColor,false);
+    display.drawSmoothArc(cx,cy-(H/2),H+4,0,360-theta,theta    ,foregroundColor,bgColor,false);
+    display.fillRect(cx-W-1,cy-(H/2),2*(W+1)+1,H,foregroundColor);
+    display.drawSmoothArc(cx,cy-H-4,H+4,H+3,360-theta,theta,bgColor,foregroundColor,false);
 
   debugMessage(String("screenHelperPostStatus() end"), 1);   
 }
@@ -422,6 +431,7 @@ void screenHelperGraph(uint16_t initialX, uint16_t initialY, uint16_t width, uin
   int8_t loop; // upper bound is kSampleCapacity definition (size of Measure retained storage)
   uint16_t text1Width, text1Height, graphLineY;
   uint16_t deltaX, x, y, xp, yp;  // graphing positions
+  uint16_t warningColor;
   float minValue, maxValue, value, range, average;
   bool firstpoint = true;
 
@@ -522,11 +532,12 @@ void screenHelperGraph(uint16_t initialX, uint16_t initialY, uint16_t width, uin
 
     // Draw a filled circle representing the data value, using the warning color scheme appropriate for
     // the specified sensor data type.
-    display.fillSmoothCircle(x,y,4,getWarningColor(datatype,measure.getMember(loop)));
+    warningColor = getWarningColor(datatype,measure.getMember(loop));
+    display.fillSmoothCircle(x, y, 4, warningColor);
 
     // redraw the last circle to eliminate the line overdrawn on it
     if (!firstpoint)
-      display.fillSmoothCircle(xp,yp,4,getWarningColor(datatype,measure.getMember(loop)));
+      display.fillSmoothCircle(xp, yp, 4, warningColor);
 
     // Save x & y of this point to use as previous point for next one.
     xp = x;
@@ -541,24 +552,24 @@ String getWarningLabel(uint8_t datatype, float datavalue)
 {
   switch(datatype) {
     case CO2_DATA:
-      return(warningLabel[co2Range(datavalue)]);
+      return(kWarningLabel[co2Range(datavalue)]);
     case VOC_DATA:
-      return(warningLabel[vocRange(datavalue)]);
+      return(kWarningLabel[vocRange(datavalue)]);
     case NOX_DATA:
-      return(warningLabel[noxRange(datavalue)]);
+      return(kWarningLabel[noxRange(datavalue)]);
     case PM_DATA:
-      return(warningLabel[pm25Range(datavalue)]);
+      return(kWarningLabel[pm25Range(datavalue)]);
     case TEMP_DATA:
       // Alternatively could explicitly return TFT_GREEN & TFT_YELLOW for temperature 
-      // & humidity comfort zones but using warningColor[0] and warningColor[1] provides 
+      // & humidity comfort zones but using kWarningColor[0] and kWarningColor[1] provides 
       // configurable consistency with other warning/comfort coloration
-      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(warningLabel[1]); // "Fair"
-      else return(warningLabel[0]);  // "Good"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(kWarningLabel[1]); // "Fair"
+      else return(kWarningLabel[0]);  // "Good"
     case HUM_DATA:
-      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(warningLabel[1]); // "Fair"
-      else return(warningLabel[0]); // "Good"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(kWarningLabel[1]); // "Fair"
+      else return(kWarningLabel[0]); // "Good"
     default:
-      return(warningLabel[0]);
+      return(kWarningLabel[0]);
   }
 }
 
@@ -581,10 +592,10 @@ void arcMeter(uint16_t xcenter, uint16_t ycenter, uint16_t width, uint16_t quali
 
   // draw segmented arcs. First and last segments are drawn with rounded ends so are rendered first,
   // interior segments with straight ends are then added over the top.  Drawing order matters here.
-  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,180,270, warningColor[3],TFT_BLACK, true);
-  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,90,180, warningColor[0],TFT_BLACK, true);
-  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,180,225, warningColor[2],TFT_BLACK, false);
-  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,135,180, warningColor[1],TFT_BLACK, false);
+  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,180,270, kWarningColor[3],TFT_BLACK, true);
+  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,90,180, kWarningColor[0],TFT_BLACK, true);
+  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,180,225, kWarningColor[2],TFT_BLACK, false);
+  display.drawSmoothArc(xcenter,ycenter,arcOuterRadius,arcInnerRadius,135,180, kWarningColor[1],TFT_BLACK, false);
 
   // Add an indicator dot in the zone in the arc that corresponds to the specified quality value. Confirms
   // that the quality value is in the valid range before drawing.
@@ -613,7 +624,8 @@ void fillSmoothRoundRectWithBorder(int32_t x, int32_t y, int32_t w, int32_t h, i
 void screenMain() {
   int32_t i, me, mt, mm, ws, hs, wl;
   int32_t x0, y0, w, h, mx, my;
-  uint16_t wcolor, windex;
+  uint8_t warningIndex;
+  uint16_t warningColor;
 
   debugMessage("screenMain() start",1);
 
@@ -652,17 +664,17 @@ void screenMain() {
   mx = x0 + (ws/2);
   y0 = mt + hs + mm;
   my = y0 + arcGaugeHeight(ws) + 10;
-  wcolor = getWarningColor(VOC_DATA,totalVOCIndex.getCurrent());
-  windex = vocRange(totalVOCIndex.getCurrent());
-  display.fillRoundRect(x0,y0,ws,hs,8,wcolor);  // Panel background
-  arcGauge(mx,my,ws,windex);  // Gauge
+  warningIndex = vocRange(totalVOCIndex.getCurrent());
+  warningColor = kWarningColor[warningIndex];
+  display.fillRoundRect(x0,y0,ws,hs,8,warningColor);  // Panel background
+  arcGauge(mx,my,ws,warningIndex);  // Gauge
   display.loadFont(Roboto_Regular_24);
   display.setTextDatum(MC_DATUM);
-  if((windex == 1) || (windex == 0)) {
-    display.setTextColor(TFT_BLACK,wcolor,true);
+  if((warningIndex == 1) || (warningIndex == 0)) {
+    display.setTextColor(TFT_BLACK,warningColor,true);
   }
   else {
-    display.setTextColor(TFT_WHITE,wcolor,true);
+    display.setTextColor(TFT_WHITE,warningColor,true);
   }
   display.drawString("VOC",mx,my+14);
   display.drawSmoothRoundRect(x0,y0,8,6,ws,hs,TFT_WHITE);  // Panel border
@@ -671,16 +683,16 @@ void screenMain() {
   // y0 and my don't change (all in the same horizontal row)
   x0 = me + ws + mm;
   mx = x0 + (ws/2);
-  wcolor = getWarningColor(PM_DATA,totalPM25.getCurrent());
-  windex = pm25Range(totalPM25.getCurrent());
-  display.fillRoundRect(x0,y0,ws,hs,8,wcolor);  // Panel background
-  arcGauge(mx,my,ws,windex);  // Gauge
+  warningIndex = pm25Range(totalPM25.getCurrent());
+  warningColor = kWarningColor[warningIndex];
+  display.fillRoundRect(x0,y0,ws,hs,8,warningColor);  // Panel background
+  arcGauge(mx,my,ws,warningIndex);  // Gauge
   display.loadFont(Roboto_Regular_24);
-  if((windex == 1) || (windex == 0)) {
-    display.setTextColor(TFT_BLACK,wcolor,true);
+  if((warningIndex == 1) || (warningIndex == 0)) {
+    display.setTextColor(TFT_BLACK,warningColor,true);
   }
   else {
-    display.setTextColor(TFT_WHITE,wcolor,true);
+    display.setTextColor(TFT_WHITE,warningColor,true);
   }
   display.drawString("PM25",mx,my+14);
   display.drawSmoothRoundRect(x0,y0,8,6,ws,hs,TFT_WHITE);
@@ -689,38 +701,37 @@ void screenMain() {
   // y0 and my don't change (all in the same horizontal row)
   x0 = me + (2*ws) + (2*mm);
   mx = x0 + (ws/2);
-  wcolor = getWarningColor(NOX_DATA,totalNOxIndex.getCurrent());
-  windex = noxRange(totalNOxIndex.getCurrent());
-  display.fillRoundRect(x0,y0,ws,hs,8,wcolor);  // Panel background
-  arcGauge(mx,my,ws,windex);  // Gauge
+  warningIndex = noxRange(totalNOxIndex.getCurrent());
+  warningColor = kWarningColor[warningIndex];
+  display.fillRoundRect(x0,y0,ws,hs,8,warningColor);  // Panel background
+  arcGauge(mx,my,ws,warningIndex);  // Gauge
   display.loadFont(Roboto_Regular_24);
-  if((windex == 1) || (windex == 0)) {
-    display.setTextColor(TFT_BLACK,wcolor,true);
+  if((warningIndex == 1) || (warningIndex == 0)) {
+    display.setTextColor(TFT_BLACK,warningColor,true);
   }
   else {
-    display.setTextColor(TFT_WHITE,wcolor,true);
+    display.setTextColor(TFT_WHITE,warningColor,true);
   }
   display.drawString("NOX",mx,my+14);
   display.drawSmoothRoundRect(x0,y0,8,6,ws,hs,TFT_WHITE);
 
   // Now the wide CO2 panel on the right side of the top row
-
-  wcolor = getWarningColor(CO2_DATA,totalCO2.getCurrent());
-  windex = co2Range(totalCO2.getCurrent());
+  warningIndex = co2Range(totalCO2.getCurrent());
+  warningColor = kWarningColor[warningIndex];
 
   // First draw the CO2 subpanel's quality scale. The dimensions of each element
   // are hand-calculated based on the width of the subpanel, which for this layout
   // works out to be (46x18)
   x0 = me + ws + mm + 1;
   y0 = mt + hs - 20;  // panel height of 18 + 2 pixels of panel border thickness
-  display.fillRect(x0,y0,46,18,warningColor[0]);
-  display.fillRect(x0+46,y0,46,18,warningColor[1]);
-  display.fillRect(x0+92,y0,46,18,warningColor[2]);
-  display.fillRect(x0+138,y0,46,18,warningColor[3]);
+  display.fillRect(x0,y0,46,18,kWarningColor[0]);
+  display.fillRect(x0+46,y0,46,18,kWarningColor[1]);
+  display.fillRect(x0+92,y0,46,18,kWarningColor[2]);
+  display.fillRect(x0+138,y0,46,18,kWarningColor[3]);
 
   // Add the current value indicator. Horizontal position is calculated based on
   // knowledge of the sizes of the quality scale element as handled above.
-  mx = x0 + 23 + (windex * 46);  // Simulate quality value placement for CO2
+  mx = x0 + 23 + (warningIndex * 46);  // Simulate quality value placement for CO2
   display.fillSmoothCircle(mx,y0+8,8,TFT_WHITE);
   display.fillSmoothCircle(mx,y0+8,4,TFT_BLACK);
 
@@ -735,16 +746,16 @@ void screenMain() {
   // it corresponds to, overwriting some of the rule markings. It is 46 pixels wide
   // (same as the quality scale elements) and 24 pixels tall to allow for value display,
   // and with rounded ends of radius 12 (half of the 24 pixel height).
-  mx = x0 + (windex * 46);  // Simulate quality value placement for CO2
-  display.fillSmoothRoundRect(mx,y0-4,46,24,12,wcolor);
+  mx = x0 + (warningIndex * 46);  // Simulate quality value placement for CO2
+  display.fillSmoothRoundRect(mx,y0-4,46,24,12,warningColor);
   display.loadFont(Roboto_Regular_18);
   display.setTextDatum(MC_DATUM);
   // Display CO2 values consistent with the quality zone
-  if((windex == 1) || (windex == 0)) {
-    display.setTextColor(TFT_BLACK,wcolor,true);
+  if((warningIndex == 1) || (warningIndex == 0)) {
+    display.setTextColor(TFT_BLACK,warningColor,true);
   }
   else {
-    display.setTextColor(TFT_WHITE,wcolor,true);
+    display.setTextColor(TFT_WHITE,warningColor,true);
   }
   display.drawString(String((uint16_t)(totalCO2.getCurrent()+0.5)),mx+23,y0+8);
 
@@ -755,8 +766,8 @@ void screenMain() {
   display.setTextColor(TFT_WHITE,TFT_BLACK,true);
   display.setTextDatum(TL_DATUM);
   display.drawString("CO2: ", x0, y0);
-  display.setTextColor(wcolor,TFT_BLACK,true);
-  display.drawString(warningLabel[windex],x0+62,y0);
+  display.setTextColor(warningColor,TFT_BLACK,true);
+  display.drawString(kWarningLabel[warningIndex],x0+62,y0);
 
   // And then the CO2 subpanel's border last so it overlays everything.
   display.drawSmoothRoundRect(me+ws+mm,mt,8,6,wl,hs,TFT_WHITE);
@@ -786,10 +797,10 @@ void arcGauge(uint16_t xcenter, uint16_t ycenter, uint16_t width, uint16_t quali
 
   lwidth = width/200.0;  // Heuristic for unit line width;
 
-  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,205,230, warningColor[3],TFT_DARKGREY, true);
-  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,130,155, warningColor[0],TFT_DARKGREY, true);
-  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,180,205, warningColor[2],TFT_DARKGREY, true);
-  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,155,180, warningColor[1],TFT_DARKGREY, true);
+  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,205,230, kWarningColor[3],TFT_DARKGREY, true);
+  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,130,155, kWarningColor[0],TFT_DARKGREY, true);
+  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,180,205, kWarningColor[2],TFT_DARKGREY, true);
+  display.drawArc(xcenter,ycenter,arcOuterRadius,arcZoneRadius,155,180, kWarningColor[1],TFT_DARKGREY, true);
 
   display.drawArc(xcenter,ycenter,arcZoneRadius,arcInnerRadius,130,230, TFT_WHITE,TFT_WHITE, true);
 
