@@ -33,6 +33,10 @@ extern TFT_eSPI display;
 extern uint32_t timeLastReportMS;
 extern Measure<kSampleCapacity> totalTemperatureF, totalHumidity, totalCO2, totalVOCIndex, totalPM25, totalNOxIndex;
 extern struct SiteForecast owmSiteForecast;
+extern uint8_t co2Range(float);
+extern uint8_t pm25Range(float);
+extern uint8_t vocRange(float);
+extern uint8_t noxRange(float);
 
 // Forward declarations for local functions to help make ordering in this file easier
 void screenHelperGraph(uint16_t, uint16_t, uint16_t, uint16_t, Measure<kSampleCapacity>, uint8_t, String);
@@ -40,10 +44,6 @@ void screenHelperHeaderBar(uint16_t, uint16_t, String header);
 String getWarningLabel(uint8_t, float);
 void screenHelperWiFiStatus(uint16_t, uint16_t, uint16_t);
 void screenHelperPostStatus(uint16_t, uint16_t, uint16_t, uint16_t);
-uint8_t co2Range(float); 
-uint8_t pm25Range(float);
-uint8_t vocRange(float);
-uint8_t noxRange(float);
 void arcMeter(uint16_t, uint16_t, uint16_t, uint16_t);
 void arcGauge(uint16_t, uint16_t, uint16_t, uint16_t);
 uint16_t arcGaugeHeight(uint16_t);
@@ -403,55 +403,6 @@ void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t foregroundColor, ui
     display.drawSmoothArc(cx,cy-H-4,H+4,H+3,360-theta,theta,bgColor,foregroundColor,false);
 
   debugMessage(String("screenHelperPostStatus() end"), 1);   
-}
-
-// Range and math functions
-uint8_t co2Range(float co2) 
-// converts co2 value to index value for labeling and color
-{
-  uint8_t co2Range = 
-    (co2 <= kSensorCO2Fair) ? 0 :
-    (co2 <= kSensorCO2Poor) ? 1 :
-    (co2 <= kSensorCO2Bad)  ? 2 : 3;
-
-  debugMessage(String("CO2 input of ") + co2 + " yields CO2 band " + co2Range, 2);
-  return co2Range;
-}
-
-uint8_t pm25Range(float pm25)
-// converts pm25 value to index value for labeling and color
-{
-  uint8_t aqi =
-  (pm25 <= kSensorPMFair) ? 0 :
-  (pm25 <= kSensorPMPoor) ? 1 :
-  (pm25 <= kSensorPMBad) ? 2 : 3;
-
-  debugMessage(String("PM2.5 input of ") + pm25 + " yields " + aqi + " aqi",2);
-  return aqi;
-}
-
-uint8_t vocRange(float vocIndex)
-// converts vocIndex value to index value for labeling and color
-{
-  uint8_t vocRange =
-  (vocIndex <= kSensorVOCFair) ? 0 :
-  (vocIndex <= kSensorVOCPoor) ? 1 :
-  (vocIndex <= kSensorVOCBad)  ? 2 : 3;
-
-  debugMessage(String("VOC index input of ") + vocIndex + " yields VOC band " + vocRange,2);
-  return vocRange;
-}
-
-uint8_t noxRange(float noxIndex)
-// converts noxIndex value to index value for labeling and color
-{
-  uint8_t noxRange =
-  (noxIndex <= kSensorNOxFair) ? 0 :
-  (noxIndex <= kSensorNOxPoor) ? 1 :
-  (noxIndex <= kSensorNOxBad)  ? 2 : 3;
-
-  debugMessage(String("NOx index input of ") + noxIndex + " yields NOx band " + noxRange,2);
-  return noxRange;
 }
 
 void screenHelperGraph(uint16_t initialX, uint16_t initialY, uint16_t width, uint16_t height, Measure<kSampleCapacity> measure, uint8_t datatype, String xLabel)

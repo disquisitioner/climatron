@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "Arduino.h"
+
 // Configuration Step 1: Create and/or configure secrets.h. Use secrets_template.h as guide to create secrets.h
 
 // Configuration Step 2: Set network data endpoints

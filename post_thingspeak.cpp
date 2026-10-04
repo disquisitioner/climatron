@@ -3,10 +3,10 @@
   Description:    Write sensor data to ThingSpeak (https://thingspeak.mathworks.com)
 */
 
-#include "Arduino.h"
 #include "config.h"     // hardware and internet configuration parameters
 
 #ifdef THINGSPEAK
+  #include "Arduino.h"
   #include <HTTPClient.h>
   #include "climatron.h"  // Climatron main header
   #include "secrets.h"    // ThingSpeak private credentials

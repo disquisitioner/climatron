@@ -5,11 +5,11 @@
   See README.md for target information and revision history
 */
 
-#include "Arduino.h"
 #include "config.h"               // hardware and internet configuration parameters
 
 // Only compile if InfluxDB enabled
 #ifdef INFLUX
+  #include "Arduino.h"
   #include <InfluxDbClient.h>
   #include "climatron.h"  // overall header info for Powered Air Quality
   #include "secrets.h"              // private credentials for network, MQTT, weather provider
