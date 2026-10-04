@@ -505,36 +505,34 @@ bool sampleEvaluateRapidRise(
 {
     const uint16_t stored = samples.getStored();
 
-    // Need enough samples for:
-    //   - at least 2 historical deltas
-    //   - kRequiredRisingDeltas recent deltas
+    // Need at least two historical deltas plus the recent deltas.
     if (stored < (kRequiredRisingDeltas + 3)) {
         return false;
     }
 
-    // Exclude the most recent kRequiredRisingDeltas from the
-    // baseline calculation.
+    // Valid retained values are right-aligned in Measure's buffer.
+    const uint16_t offset = samples.getCapacity() - stored;
+
+    auto member = [&](uint16_t index) -> float {
+        return samples.getMember(offset + index);
+    };
+
+    // Exclude the most recent deltas from the baseline.
     const uint16_t baselineDeltaCount =
         stored - kRequiredRisingDeltas - 1;
 
-    // Calculate mean historical delta.
     float sum = 0.0f;
 
     for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
-        sum += samples.getMember(i + 1)
-             - samples.getMember(i);
+        sum += member(i + 1) - member(i);
     }
 
     const float meanDelta = sum / baselineDeltaCount;
 
-    // Calculate sigma of historical deltas.
     float variance = 0.0f;
 
     for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
-        const float delta =
-            samples.getMember(i + 1)
-          - samples.getMember(i);
-
+        const float delta = member(i + 1) - member(i);
         const float diff = delta - meanDelta;
         variance += diff * diff;
     }
@@ -542,25 +540,77 @@ bool sampleEvaluateRapidRise(
     variance /= baselineDeltaCount;
 
     const float stdDelta = sqrtf(variance);
-
     const float threshold =
         fmaxf(kSigmaMultiplier * stdDelta, variability);
 
-    // Evaluate only the most recent deltas.
-    const uint16_t first =
-        stored - kRequiredRisingDeltas;
+    const uint16_t first = stored - kRequiredRisingDeltas;
 
     for (uint16_t i = first; i < stored; ++i) {
-        const float delta =
-            samples.getMember(i)
-          - samples.getMember(i - 1);
+        const float delta = member(i) - member(i - 1);
 
-        if (delta < threshold) {
+        if (delta <= threshold) {
             return false;
         }
     }
 
     return true;
+}
+
+int8_t sampleEvaluateSteadyTrend(
+    Measure<kSampleCapacity>& samples,
+    float variability,
+    uint16_t requiredDeltas = kRequiredRisingDeltas,
+    float toleranceFraction = 0.25f)
+{
+    if (!isfinite(variability) || variability <= 0.0f ||
+        !isfinite(toleranceFraction) ||
+        toleranceFraction < 0.0f || toleranceFraction >= 1.0f ||
+        requiredDeltas == 0) {
+        return 0;
+    }
+
+    const uint16_t stored = samples.getStored();
+
+    if (stored <= requiredDeltas) {
+        return 0;
+    }
+
+    // Valid retained values are right-aligned.
+    const uint16_t offset = samples.getCapacity() - stored;
+
+    const float minimumDelta =
+        variability * (1.0f - toleranceFraction);
+    const float maximumDelta =
+        variability * (1.0f + toleranceFraction);
+
+    const uint16_t first = stored - requiredDeltas;
+    int8_t direction = 0;
+
+    for (uint16_t i = first; i < stored; ++i) {
+        const float delta =
+            samples.getMember(offset + i)
+            - samples.getMember(offset + i - 1);
+
+        if (!isfinite(delta)) {
+            return 0;
+        }
+
+        const float magnitude = fabsf(delta);
+
+        if (magnitude < minimumDelta || magnitude > maximumDelta) {
+            return 0;
+        }
+
+        const int8_t currentDirection = (delta > 0.0f) ? 1 : -1;
+
+        if (direction == 0) {
+            direction = currentDirection;
+        } else if (currentDirection != direction) {
+            return 0;
+        }
+    }
+
+    return direction;
 }
 
 /**
@@ -697,11 +747,11 @@ uint8_t networkRSSISimulate(uint8_t maxCycles)
         simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax + 1);
       }
       else {
-        simulatedRSSI = constrain(
-          simulatedRSSI + randomSignedDelta(kNetworkRSSISimVariability),
-          kNetworkRSSIMin,
-          kNetworkRSSIMax
-        );
+        const int32_t delta = randomSignedDelta(kNetworkRSSISimVariability);
+        const int32_t candidate = static_cast<int32_t>(simulatedRSSI) + delta;
+        const int32_t bounded = constrain(candidate, kNetworkRSSIMin, kNetworkRSSIMax);
+
+        simulatedRSSI = static_cast<uint8_t>(bounded);
       }
       cycleCount++;
       if (cycleCount >= maxCycles)
@@ -712,7 +762,7 @@ uint8_t networkRSSISimulate(uint8_t maxCycles)
       break;
   }
 
-  debugMessage(String("returning simulated WiFi RSSI: -") + simulatedRSSI + "db",1);
+  debugMessage(String("returning simulated WiFi RSSI: ") + simulatedRSSI + "db",1);
   debugMessage("networkRSSISimulate end()",1);
   return(simulatedRSSI);
 }
@@ -1809,11 +1859,6 @@ void sensorSimulateVary(
     }
 }
 
-// Description: Simulates air quality values from Sensirion SCD6X sensor
-// Parameters:
-//  maxCycles = If used, determines how many times the current mode executes before resetting
-// Output : NA
-// Improvement : NA
 void sensorSEN6xSimulate(
   uint8_t maxCycles,
   float& temperatureF,
@@ -1823,7 +1868,7 @@ void sensorSEN6xSimulate(
   float& VOCIndex,
   float& NOxIndex)
 {
-  debugMessage ("sensorSEN6xSimulate() start",1);
+  debugMessage("sensorSEN6xSimulate() start", 1);
 
   static uint8_t cycleCount = 0;
   static float simulatedTempF = 0.0f;
@@ -1833,148 +1878,234 @@ void sensorSEN6xSimulate(
   static float simulatedVOCIndex = 0.0f;
   static float simulatedNOxIndex = 0.0f;
 
-  switch (HARDWARE_SIMULATE) {
-  case 1: // random values every time
-    sensorSimulateRandom(simulatedTempF, simulatedHumidity, simulatedCO2, simulatedPM25, simulatedVOCIndex, simulatedNOxIndex);
-    break;    
-  case 2:
-  default: // random starting values, slightly +/- per cycle
-    if (cycleCount == 0) {
-      // create new base values
-      sensorSimulateRandom(
-        simulatedTempF,
-        simulatedHumidity,
-        simulatedCO2,
-        simulatedPM25,
-        simulatedVOCIndex,
-        simulatedNOxIndex);
+  // Used by modes 4 and 5.
+  auto selectedMaxVariability = [](kSensorType sensor) -> float {
+    switch (sensor) {
+        case SENSOR_TEMP:     return kSensorTempVariability;
+        case SENSOR_HUMIDITY: return kSensorHumidityVariability;
+        case SENSOR_CO2:      return kSensorCO2Variability;
+        case SENSOR_PM25:     return kSensorPMVariability;
+        case SENSOR_VOC:      return kSensorVOCVariability;
+        case SENSOR_NOX:      return kSensorNOxVariability;
+        default:             return 0.0f;
     }
-    else {
-      // slightly +/- per cycle
-      sensorSimulateVary(
-        simulatedTempF,
-        simulatedHumidity,
-        simulatedCO2,
-        simulatedPM25,
-        simulatedVOCIndex,
-        simulatedNOxIndex);
+  };
+
+  auto deleteSelectedRetained = [](kSensorType sensor) {
+    switch (sensor) {
+        case SENSOR_TEMP:     totalTemperatureF.deleteRetained(); break;
+        case SENSOR_HUMIDITY: totalHumidity.deleteRetained();     break;
+        case SENSOR_CO2:      totalCO2.deleteRetained();          break;
+        case SENSOR_PM25:     totalPM25.deleteRetained();         break;
+        case SENSOR_VOC:      totalVOCIndex.deleteRetained();     break;
+        case SENSOR_NOX:      totalNOxIndex.deleteRetained();     break;
+        default: break;
     }
+  };
 
-    cycleCount++;
-    if (cycleCount >= maxCycles)
-        cycleCount = 0;
-    break;
-  case 3: // out of bounds values every time
-    simulatedTempF = (random(0,2)) ? kSensorTempFMin-2 : kSensorTempFMax+2;
-    simulatedHumidity = (random(0,2)) ? kSensorHumidityMin-2 : kSensorHumidityMax+2;
-    simulatedCO2 = (random(0,2)) ? kSensorCO2Min-2 : kSensorCO2Max+2;
-    simulatedPM25 = (random(0,2)) ? kSensorPMMin-2 : kSensorPMMax+2;
-    simulatedVOCIndex = (random(0,2)) ? kSensorVOCMin-2 : kSensorVOCMax+2;
-    simulatedNOxIndex = (random(0,2)) ? kSensorNOxMin-2 : kSensorNOxMax+2;
-    break;
-  case 4: { // rapidly rising value for one characteristic
-    static kSensorType specialSensor = SENSOR_NONE;
-
-    if (cycleCount == 0) {
-      // Pick one characteristic for this entire test sequence.
-      specialSensor =
-          (kSensorType)random(SENSOR_TEMP, SENSOR_COUNT);
-
-      // Random starting values for all characteristics.
-      sensorSimulateRandom(
-          simulatedTempF,
-          simulatedHumidity,
-          simulatedCO2,
-          simulatedPM25,
-          simulatedVOCIndex,
-          simulatedNOxIndex);
-    }
-    else {
-      sensorSimulateVary(
-        simulatedTempF,
-        simulatedHumidity,
-        simulatedCO2,
-        simulatedPM25,
-        simulatedVOCIndex,
-        simulatedNOxIndex,
-        specialSensor);
-
-      switch (specialSensor) {
-        case SENSOR_TEMP:
-            simulatedTempF = clampFloat(
-                simulatedTempF + random(kSensorTempVariability * 2, kSensorTempVariability * 4),
-                kSensorTempFMin,
-                kSensorTempFMax);
-            break;
+  auto changeSelected = [&](kSensorType sensor, float delta) {
+    switch (sensor) {
+      case SENSOR_TEMP:
+          simulatedTempF = clampFloat(
+              simulatedTempF + delta,
+              kSensorTempFMin,
+              kSensorTempFMax);
+          break;
 
         case SENSOR_HUMIDITY:
             simulatedHumidity = clampFloat(
-                simulatedHumidity + random(kSensorHumidityVariability * 2, kSensorHumidityVariability * 4),
+                simulatedHumidity + delta,
                 kSensorHumidityMin,
                 kSensorHumidityMax);
             break;
-        case SENSOR_CO2: {
-          int32_t nextCO2 =
-              (int32_t)simulatedCO2 + random(kSensorCO2Variability * 2, kSensorCO2Variability * 4);
-          simulatedCO2 = (uint16_t)constrain(
-              nextCO2,
-              (int32_t)kSensorCO2Min,
-              (int32_t)kSensorCO2Max);
-          break;
+
+        case SENSOR_CO2:
+              default: {
+            // Preserve integer CO2 increments.
+            const int32_t nextCO2 =
+                static_cast<int32_t>(simulatedCO2)
+                + static_cast<int32_t>(delta);
+
+            simulatedCO2 = static_cast<uint16_t>(constrain(
+                nextCO2,
+                static_cast<int32_t>(kSensorCO2Min),
+                static_cast<int32_t>(kSensorCO2Max)));
+            break;
         }
+
         case SENSOR_PM25:
             simulatedPM25 = clampFloat(
-                simulatedPM25 + random(kSensorPMVariability * 2, kSensorPMVariability * 4),
+                simulatedPM25 + delta,
                 kSensorPMMin,
                 kSensorPMBad + 100);
             break;
+
         case SENSOR_VOC:
             simulatedVOCIndex = clampFloat(
-                simulatedVOCIndex + random(kSensorVOCVariability * 2, kSensorVOCVariability * 4),
+                simulatedVOCIndex + delta,
                 kSensorVOCMin,
                 kSensorVOCMax);
             break;
+
         case SENSOR_NOX:
             simulatedNOxIndex = clampFloat(
-                simulatedNOxIndex + random(kSensorNOxVariability * 2, kSensorNOxVariability * 4),
+                simulatedNOxIndex + delta,
                 kSensorNOxMin,
                 kSensorNOxMax);
             break;
-        default:
-            break;
       }
+  };
+
+  switch (HARDWARE_SIMULATE) {
+    case 1:
+        // Random values every time.
+        sensorSimulateRandom(
+            simulatedTempF,
+            simulatedHumidity,
+            simulatedCO2,
+            simulatedPM25,
+            simulatedVOCIndex,
+            simulatedNOxIndex);
+        break;
+    case 2:
+    default:
+        // Random starting values, slightly +/- per cycle.
+        if (cycleCount == 0) {
+            sensorSimulateRandom(
+                simulatedTempF,
+                simulatedHumidity,
+                simulatedCO2,
+                simulatedPM25,
+                simulatedVOCIndex,
+                simulatedNOxIndex);
+        } else {
+            sensorSimulateVary(
+                simulatedTempF,
+                simulatedHumidity,
+                simulatedCO2,
+                simulatedPM25,
+                simulatedVOCIndex,
+                simulatedNOxIndex);
+        }
+
+        cycleCount++;
+        if (cycleCount >= maxCycles) {
+            cycleCount = 0;
+        }
+        break;
+    case 3:
+        // Out-of-bounds values every time.
+        simulatedTempF = random(0, 2)
+            ? kSensorTempFMin - 2 : kSensorTempFMax + 2;
+        simulatedHumidity = random(0, 2)
+            ? kSensorHumidityMin - 2 : kSensorHumidityMax + 2;
+        simulatedCO2 = random(0, 2)
+            ? kSensorCO2Min - 2 : kSensorCO2Max + 2;
+        simulatedPM25 = random(0, 2)
+            ? kSensorPMMin - 2 : kSensorPMMax + 2;
+        simulatedVOCIndex = random(0, 2)
+            ? kSensorVOCMin - 2 : kSensorVOCMax + 2;
+        simulatedNOxIndex = random(0, 2)
+            ? kSensorNOxMin - 2 : kSensorNOxMax + 2;
+        break;
+    case 4: {
+      // rapid directional change > rapid-rise threshold for one characteristic
+      constexpr uint8_t baselineSamples = 3;
+      static kSensorType specialSensor = SENSOR_NONE;
+
+      if (cycleCount == 0) {
+          specialSensor = static_cast<kSensorType>(random(SENSOR_TEMP, SENSOR_COUNT));
+          deleteSelectedRetained(specialSensor);
+
+          debugMessage(String("Spiked characteristic is ") + specialSensor,2);
+
+          sensorSimulateRandom(
+              simulatedTempF,
+              simulatedHumidity,
+              simulatedCO2,
+              simulatedPM25,
+              simulatedVOCIndex,
+              simulatedNOxIndex);
+
+          // Start the selected sensor low to provide room to rise.
+          switch (specialSensor) {
+              case SENSOR_TEMP:
+                  simulatedTempF = kSensorTempFMin;
+                  break;
+              case SENSOR_HUMIDITY:
+                  simulatedHumidity = kSensorHumidityMin;
+                  break;
+              case SENSOR_CO2:
+                  simulatedCO2 = kSensorCO2Min;
+                  break;
+              case SENSOR_PM25:
+                  simulatedPM25 = kSensorPMMin;
+                  break;
+              case SENSOR_VOC:
+                  simulatedVOCIndex = kSensorVOCMin;
+                  break;
+              case SENSOR_NOX:
+                  simulatedNOxIndex = kSensorNOxMin;
+                  break;
+              default:
+                  break;
+          }
+      } 
+      else {
+          // Vary other sensors while holding the selected one steady.
+          sensorSimulateVary(
+              simulatedTempF,
+              simulatedHumidity,
+              simulatedCO2,
+              simulatedPM25,
+              simulatedVOCIndex,
+              simulatedNOxIndex,
+              specialSensor);
+
+          // Counts 0, 1, and 2 supply the baseline.
+          // Count 3 supplies the first rising sample.
+          if (cycleCount >= baselineSamples) {
+              const float variability =
+                  selectedMaxVariability(specialSensor);
+
+              // Preserve the original integer random increments.
+              const float delta = random(
+                  variability * 2,
+                  variability * 4);
+
+              changeSelected(specialSensor, delta);
+          }
+      }
+
+      cycleCount++;
+      if (cycleCount >= maxCycles) {
+          cycleCount = 0;
+      }
+      break;
     }
+    case 5: {
+      // small, consistent directional change < rapid-rise threshold for one characteristic
+      static kSensorType specialSensor = SENSOR_NONE;
+      static int8_t direction = 1;
 
-    cycleCount++;
+      if (cycleCount == 0) {
+          // specialSensor = static_cast<kSensorType>(
+          //     random(SENSOR_TEMP, SENSOR_COUNT));
+        specialSensor = SENSOR_VOC;
+        deleteSelectedRetained(specialSensor);
 
-    if (cycleCount >= maxCycles)
-        cycleCount = 0;
-    break;
-  }
-  case 5: { // consistent rising or falling value for one characteristic
-    static kSensorType specialSensor = SENSOR_NONE;
-    static int8_t direction = 1;
+        direction = random(0, 2) ? 1 : -1;
 
-    if (cycleCount == 0) {
-      // Pick one characteristic for this entire test sequence.
-      specialSensor =
-          (kSensorType)random(SENSOR_TEMP, SENSOR_COUNT);
-
-      // Pick rising (+1) or falling (-1) for the entire sequence.
-      direction = random(0, 2) ? 1 : -1;
-
-      // Random starting values for all characteristics.
-      sensorSimulateRandom(
+        sensorSimulateRandom(
           simulatedTempF,
           simulatedHumidity,
           simulatedCO2,
           simulatedPM25,
           simulatedVOCIndex,
           simulatedNOxIndex);
-    }
-    else {
-      // Slightly vary everything except the characteristic under test.
-      sensorSimulateVary(
+      } 
+      else {
+        sensorSimulateVary(
           simulatedTempF,
           simulatedHumidity,
           simulatedCO2,
@@ -1983,69 +2114,17 @@ void sensorSEN6xSimulate(
           simulatedNOxIndex,
           specialSensor);
 
-      // Consistently move the selected characteristic
-      // in the same direction for this entire sequence.
-      switch (specialSensor) {
-        case SENSOR_TEMP:
-            simulatedTempF = clampFloat(
-                simulatedTempF + (direction * kSensorTempVariability),
-                kSensorTempFMin,
-                kSensorTempFMax);
-            break;
-
-        case SENSOR_HUMIDITY:
-            simulatedHumidity = clampFloat(
-                simulatedHumidity + (direction * kSensorHumidityVariability),
-                kSensorHumidityMin,
-                kSensorHumidityMax);
-            break;
-
-        case SENSOR_CO2: {
-            int32_t nextCO2 =
-                (int32_t)simulatedCO2 + (direction * kSensorCO2Variability);
-
-            simulatedCO2 = (uint16_t)constrain(
-                nextCO2,
-                (int32_t)kSensorCO2Min,
-                (int32_t)kSensorCO2Max);
-            break;
-        }
-
-        case SENSOR_PM25:
-            simulatedPM25 = clampFloat(
-                simulatedPM25 + (direction * kSensorPMVariability),
-                kSensorPMMin,
-                kSensorPMBad + 100);
-            break;
-
-        case SENSOR_VOC:
-            simulatedVOCIndex = clampFloat(
-                simulatedVOCIndex + (direction * kSensorVOCVariability),
-                kSensorVOCMin,
-                kSensorVOCMax);
-            break;
-
-        case SENSOR_NOX:
-            simulatedNOxIndex = clampFloat(
-                simulatedNOxIndex + (direction * kSensorNOxVariability),
-                kSensorNOxMin,
-                kSensorNOxMax);
-            break;
-
-        default:
-            break;
+        changeSelected(specialSensor, direction * selectedMaxVariability(specialSensor));
       }
+
+      cycleCount++;
+      if (cycleCount >= maxCycles) {
+          cycleCount = 0;
+      }
+      break;
     }
-
-    cycleCount++;
-
-    if (cycleCount >= maxCycles)
-        cycleCount = 0;
-    break;
   }
-}
-  
-  // return new simulated values
+
   temperatureF = simulatedTempF;
   humidity = simulatedHumidity;
   co2 = simulatedCO2;
@@ -2053,12 +2132,16 @@ void sensorSEN6xSimulate(
   VOCIndex = simulatedVOCIndex;
   NOxIndex = simulatedNOxIndex;
 
-  debugMessage(String("returning simulated temp: ") + simulatedTempF + "F, humidity: " + simulatedHumidity
-    + "%, CO2: " + simulatedCO2 + "ppm",1);
-  debugMessage(String("returning simulated PM2.5: ") + simulatedPM25 + " ppm, VOC index: " + simulatedVOCIndex,1);
-  debugMessage(String("returning simulated noxIndex: ") + simulatedNOxIndex,1);
-  
-  debugMessage("sensorSEN6xSimulate() end",1);
+  debugMessage(
+      String("returning simulated temp:") + simulatedTempF
+          + "F, humidity:" + simulatedHumidity
+          + "%, CO2:" + simulatedCO2
+          + "ppm, PM2.5:" + simulatedPM25
+          + " ppm, VOC index:" + simulatedVOCIndex
+          + ", NOx index:" + simulatedNOxIndex,
+      1);
+
+  debugMessage("sensorSEN6xSimulate() end", 1);
 }
 
 bool sensorSEN6xRead()
@@ -2338,6 +2421,14 @@ float pm25toAQI_US(float pm25)
   return aqiValue;
 }
 
+/////////////////////////////////////////
+// Math functions
+/////////////////////////////////////////
+
+int32_t randomSignedDelta(int32_t range) {
+    return random(-range, range + 1);
+}
+
 float fmap(float x, float xmin, float xmax, float ymin, float ymax)
 {
   return( ymin + ((x - xmin)*(ymax-ymin)/(xmax - xmin)));
@@ -2348,10 +2439,6 @@ float randomFloat(uint16_t minValue, uint16_t maxValue) {
     uint32_t randomFixed = random(rangeFixed + 1U);
 
     return minValue + randomFixed / 100.0f;
-}
-
-int32_t randomSignedDelta(int32_t range) {
-    return random(-range, range + 1);
 }
 
 float randomFloatDelta(float range) {

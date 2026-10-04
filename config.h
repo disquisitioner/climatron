@@ -28,7 +28,7 @@
 // 3 = out of bounds values every time
 // 4 = rapidly rising value for one characteristic
 // 5 = consistent rise or falling values for one characteristic
-#define HARDWARE_SIMULATE 4
+#define HARDWARE_SIMULATE 5
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
@@ -92,7 +92,7 @@ constexpr uint8_t kSampleCapacity = 10;
   // time between sensor reads, e.g. samples
   constexpr uint32_t kTimeSensorSampleMS = 30000; // minimum inter-sample time for many sensors
 #elif defined(DEBUG) && defined (HARDWARE_SIMULATE)
-  constexpr uint32_t kTimeSensorSampleMS = 10000; // rapid samples for debugging
+  constexpr uint32_t kTimeSensorSampleMS = 15000; // rapid samples for debugging
 #else // Production sample pace
   constexpr uint32_t kTimeSensorSampleMS = 60000;
 #endif

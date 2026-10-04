@@ -24,6 +24,8 @@
 extern uint8_t networkRSSIRead();
 extern bool OWMAirPollutionRead();
 extern bool OWMForecastRead();
+extern int8_t sampleEvaluateSteadyTrend(Measure<kSampleCapacity>& samples,
+    float variability, uint16_t requiredDeltas, float toleranceFraction);
 extern void debugMessage(String messageText, uint8_t messageLevel);
 extern uint16_t getWarningColor(uint8_t, float);
 extern uint16_t getWarningTextColor(uint8_t, float);
@@ -117,10 +119,11 @@ void screenPM25()
 void screenVOC()
 {
   // screen layout assists in pixels
-  const uint16_t xCircle = (display.width()/2);
+  const uint16_t xArcCenter = (display.width()/2);
   const uint16_t yCircle = (display.height()*4/5);
-  const uint16_t xValue = xCircle;
   const uint16_t yValue = yCircle - 50;
+  const uint8_t triangleWidth = 27;
+  const uint8_t triangleHeight = 20;
   uint16_t foregroundColor;
   uint8_t warningIndex;
   uint16_t warningColor;
@@ -135,23 +138,34 @@ void screenVOC()
 
   display.setTextDatum(MC_DATUM);
 
-  // If VOCIndex has no values, alert the user
+  // Alert the user if VOCIndex has no data
   if (totalVOCIndex.getStored() == 0) {
     display.loadFont(Roboto_Regular_18);
     display.setTextColor(TFT_RED, TFT_BLACK, true);
-    display.drawString("No data", (display.width() / 2), (display.height() / 2));
+    display.drawString("No data", xArcCenter, (display.height() / 2));
   }
   else {
     // Draw segmented arc showing color range and current VOCIndex in that range
-    arcMeter(xCircle,yCircle,display.width(),warningIndex);
+    arcMeter(xArcCenter,yCircle,display.width(),warningIndex);
 
-    // Display VOCIndex value and label inside the arc
+    // display value inside arc
     display.loadFont(Roboto_Bold_60);
     display.setTextColor(warningColor, TFT_BLACK, true); 
-    display.drawFloat((totalVOCIndex.getCurrent() +.5), 0, xValue, yValue);
+    display.drawFloat((totalVOCIndex.getCurrent() +.5), 0, xArcCenter, yValue);
+    // if the trend is rising or falling, draw an appropriate triangle to indicate this
+    uint16_t valueWidth = display.textWidth(String(uint16_t(totalVOCIndex.getCurrent() +.5)));
+    const int8_t VOCDirection =
+      sampleEvaluateSteadyTrend(totalVOCIndex, kSensorVOCVariability, kRequiredRisingDeltas, 0.25f);
+    if (VOCDirection == 1) {
+      display.fillTriangle((xArcCenter+(valueWidth/2)+5),yValue+18,(xArcCenter+(valueWidth/2)+5+triangleWidth),yValue+18,(xArcCenter+(valueWidth/2)+5+(triangleWidth/2)),((yValue+18)-triangleHeight),warningColor);
+    }
+    else if (VOCDirection == -1) {
+      display.fillTriangle((xArcCenter+(valueWidth/2)+5),(yValue+18)-triangleHeight,(xArcCenter+(valueWidth/2)+5+triangleWidth),(yValue+18)-triangleHeight,(xArcCenter+(valueWidth/2)+5+(triangleWidth/2)),yValue+18,warningColor);
+    }
+    // display value label
     display.loadFont(Roboto_Regular_24);
     display.setTextColor(TFT_WHITE, TFT_BLACK, true);
-    display.drawString(kWarningLabel[warningIndex], xValue, yCircle);
+    display.drawString(kWarningLabel[warningIndex], xArcCenter, yCircle);
   }
   display.unloadFont();
   debugMessage("screenVOC() end",1);
@@ -160,10 +174,11 @@ void screenVOC()
 void screenNOX()
 {
   // screen layout assists in pixels
-  const uint16_t xCircle = (display.width()/2);
+  const uint16_t xArcCenter = (display.width()/2);
   const uint16_t yCircle = (display.height()*4/5);
-  const uint16_t xValue = xCircle;
   const uint16_t yValue = yCircle - 50;
+  const uint8_t triangleWidth = 27;
+  const uint8_t triangleHeight = 20;
   uint16_t foregroundColor;
   uint8_t warningIndex;
   uint16_t warningColor;
@@ -173,26 +188,40 @@ void screenNOX()
   warningIndex = noxRange(totalNOxIndex.getCurrent());
   warningColor = kWarningColor[warningIndex];
   foregroundColor = getWarningTextColor(NOX_DATA, totalNOxIndex.getCurrent());
+
   screenHelperHeaderBar(foregroundColor, warningColor, "NOx Level");
+
+  display.setTextDatum(MC_DATUM);
 
   // If NOxIndex has no values, alert the user
   if (totalNOxIndex.getStored() == 0) {
     display.loadFont(Roboto_Regular_18);
     display.setTextColor(TFT_RED, TFT_BLACK, true);
-    display.drawString("No data", (display.width() / 2), (display.height() / 2));
+    display.drawString("No data", xArcCenter, (display.height() / 2));
   }
   else {
     // Draw segmented arc showing color ranges and current NOxIndex in one of those ranges
-    arcMeter(xCircle, yCircle, display.width(), warningIndex);
+    arcMeter(xArcCenter, yCircle, display.width(), warningIndex);
 
-    // NOx value and label inside the arc
+    // display value inside arc
     display.loadFont(Roboto_Bold_60);
     display.setTextDatum(MC_DATUM);
     display.setTextColor(warningColor, TFT_BLACK, true);
-    display.drawFloat((totalNOxIndex.getCurrent() +.5), 0, xValue, yValue);
+    display.drawFloat((totalNOxIndex.getCurrent() +.5), 0, xArcCenter, yValue);
+    // if the trend is rising or falling, draw an appropriate triangle to indicate this
+    uint16_t valueWidth = display.textWidth(String(uint16_t(totalNOxIndex.getCurrent() +.5)));
+    const int8_t NOXDirection =
+      sampleEvaluateSteadyTrend(totalNOxIndex, kSensorNOxVariability, kRequiredRisingDeltas, 0.25f);
+    if (NOXDirection == 1) {
+      display.fillTriangle((xArcCenter+(valueWidth/2)+5),yValue+18,(xArcCenter+(valueWidth/2)+5+triangleWidth),yValue+18,(xArcCenter+(valueWidth/2)+5+(triangleWidth/2)),((yValue+18)-triangleHeight),warningColor);
+    }
+    else if (NOXDirection == -1) {
+      display.fillTriangle((xArcCenter+(valueWidth/2)+5),(yValue+18)-triangleHeight,(xArcCenter+(valueWidth/2)+5+triangleWidth),(yValue+18)-triangleHeight,(xArcCenter+(valueWidth/2)+5+(triangleWidth/2)),yValue+18,warningColor);
+    }
+    // display value label
     display.loadFont(Roboto_Regular_24);
     display.setTextColor(TFT_WHITE, TFT_BLACK, true);
-    display.drawString(kWarningLabel[warningIndex], xValue, yCircle);
+    display.drawString(kWarningLabel[warningIndex], xArcCenter, yCircle);
   }
   display.unloadFont();
   debugMessage("screenNOX() end",1);
