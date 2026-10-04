@@ -11,7 +11,7 @@
 // #define MQTT     // log sensor data to MQTT broker
 // #define HASSIO_MQTT  // And, if MQTT enabled, with Home Assistant too?
 // #define INFLUX // Log data to InfluxDB server
-// #define THINGSPEAK  // Log data to ThingSpeak
+#define THINGSPEAK  // Log data to ThingSpeak
 
 // Configuration Step 3: Set debug message mode
 // Modes
@@ -28,7 +28,7 @@
 // 3 = out of bounds values every time
 // 4 = rapid directional change > rapid-rise threshold for one characteristic
 // 5 = small, consistent directional change < rapid-rise threshold for one characteristic
-#define HARDWARE_SIMULATE 4
+#define HARDWARE_SIMULATE 0
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////

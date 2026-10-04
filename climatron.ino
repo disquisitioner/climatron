@@ -661,8 +661,12 @@ void samplePost(uint8_t& numSamples)
         float aqi = pm25toAQI_US(avgPM25);
 
         debugMessage(String("Averages being sent to endpoints for the last ") + (timeReportMS/60000) + " minutes",2);
-        debugMessage(String("PM2.5: ") + avgPM25 + "ppm, CO2: " + avgCO2 + "ppm, VOC index: " + avgVOC + ", NOx index: " + avgNOX + ", " + 
-          avgTemperatureF + "F, humidity: " + avgHumidity + "%", 2);
+        debugMessage(String("temp:") + avgTemperatureF
+          + "F, humidity:" + avgHumidity
+          + "%, CO2:" + avgCO2
+          + "ppm, PM2.5:" + avgPM25
+          + " ppm, VOC index:" + avgVOC
+          + ", NOx index:" + avgNOX, 2);
 
         // update RSSI before publishing
         hardwareData.rssi = networkRSSIRead();
@@ -2130,14 +2134,12 @@ void sensorSEN6xSimulate(
   VOCIndex = simulatedVOCIndex;
   NOxIndex = simulatedNOxIndex;
 
-  debugMessage(
-      String("returning simulated temp:") + simulatedTempF
-          + "F, humidity:" + simulatedHumidity
-          + "%, CO2:" + simulatedCO2
-          + "ppm, PM2.5:" + simulatedPM25
-          + " ppm, VOC index:" + simulatedVOCIndex
-          + ", NOx index:" + simulatedNOxIndex,
-      1);
+  debugMessage(String("simulated temp:") + simulatedTempF
+    + "F, humidity:" + simulatedHumidity
+    + "%, CO2:" + simulatedCO2
+    + "ppm, PM2.5:" + simulatedPM25
+    + " ppm, VOC index:" + simulatedVOCIndex
+    + ", NOx index:" + simulatedNOxIndex, 2);
 
   debugMessage("sensorSEN6xSimulate() end", 1);
 }
@@ -2220,12 +2222,12 @@ bool sensorSEN6xRead()
     totalVOCIndex.include(VOCIndex);
     totalNOxIndex.include(NOxIndex);
 
-    debugMessage(String("SEN66 temp ") + totalTemperatureF.getCurrent() + "F, total across samples: " + totalTemperatureF.getTotal(),2);
-    debugMessage(String("SEN66 humidity ") + totalHumidity.getCurrent() + ", total across samples: " + totalHumidity.getTotal(),2);
-    debugMessage(String("SEN66 CO2 ") + totalCO2.getCurrent() + "ppm, total across samples: " + totalCO2.getTotal(),2);
-    debugMessage(String("SEN66 PM25 ") + totalPM25.getCurrent() + "ppm, total: " + totalPM25.getTotal(),2);
-    debugMessage(String("SEN66 VOC index ") + totalVOCIndex.getCurrent() + ", total: " + totalVOCIndex.getTotal(),2);
-    debugMessage(String("SEN66 NOx index ") + totalNOxIndex.getCurrent() + ", total: " + totalNOxIndex.getTotal(),2);
+    debugMessage(String("SEN66 temp:") + totalTemperatureF.getCurrent()
+      + "F, humidity:" + totalHumidity.getCurrent()
+      + "%, CO2:" + totalCO2.getCurrent()
+      + "ppm, PM2.5:" + totalPM25.getCurrent()
+      + " ppm, VOC index:" + totalVOCIndex.getCurrent()
+      + ", NOx index:" + totalNOxIndex.getCurrent(), 2);
   }
   debugMessage ("sensorSEN6xRead() end",1);
   return (success);
