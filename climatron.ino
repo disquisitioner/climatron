@@ -2089,9 +2089,7 @@ void sensorSEN6xSimulate(
       static int8_t direction = 1;
 
       if (cycleCount == 0) {
-          // specialSensor = static_cast<kSensorType>(
-          //     random(SENSOR_TEMP, SENSOR_COUNT));
-        specialSensor = SENSOR_VOC;
+        specialSensor = static_cast<kSensorType>(random(SENSOR_TEMP, SENSOR_COUNT));
         deleteSelectedRetained(specialSensor);
 
         direction = random(0, 2) ? 1 : -1;

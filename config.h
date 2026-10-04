@@ -26,9 +26,9 @@
 // 1 = random values every time
 // 2 = random starting values, slightly +/- per cycle
 // 3 = out of bounds values every time
-// 4 = rapidly rising value for one characteristic
-// 5 = consistent rise or falling values for one characteristic
-#define HARDWARE_SIMULATE 5
+// 4 = rapid directional change > rapid-rise threshold for one characteristic
+// 5 = small, consistent directional change < rapid-rise threshold for one characteristic
+#define HARDWARE_SIMULATE 4
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
