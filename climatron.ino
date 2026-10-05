@@ -219,17 +219,6 @@ void loop() {
   static uint32_t timeLastInputMS         = millis();  // timestamp for last user input (screensaver)
   uint16_t calibratedX, calibratedY;
 
-  // order of operation
-  // 0 - update current alerts
-  // 1 - feed cycles to LEDControl
-  // 2 - feed cycles to web portal
-  // 3 - handle touchscreen input
-  // 4 - handle button press
-  // ------------------------- interupts and cycles fed
-  // 5 - read sensor
-  // 6 - update screen saver
-  // 7 - network endpoint(s) write?
-
   // update current alerts
   alertHandle();
 
@@ -386,57 +375,57 @@ bool sampleEvaluateRapidRise(
     Measure<kSampleCapacity>& samples,
     float variability)
 {
-    const uint16_t stored = samples.getStored();
+  const uint16_t stored = samples.getStored();
 
-    // Need at least two historical deltas plus the recent deltas.
-    if (stored < (kRequiredRisingDeltas + 3)) {
-        return false;
-    }
+  // Need at least two historical deltas plus the recent deltas.
+  if (stored < (kRequiredRisingDeltas + 3)) {
+      return false;
+  }
 
-    // Valid retained values are right-aligned in Measure's buffer.
-    const uint16_t offset = samples.getCapacity() - stored;
+  // Determine where valid samples start in the Measure buffer
+  const uint16_t offset = samples.getCapacity() - stored;
 
-    auto member = [&](uint16_t index) -> float {
-        return samples.getMember(offset + index);
-    };
+  // Helper function allowing you to work with samples from [zero]
+  auto member = [&](uint16_t index) -> float {
+      return samples.getMember(offset + index);
+  };
 
-    // Exclude the most recent deltas from the baseline.
-    const uint16_t baselineDeltaCount =
-        stored - kRequiredRisingDeltas - 1;
+  // Exclude the most recent deltas from the baseline.
+  const uint16_t baselineDeltaCount =
+      stored - kRequiredRisingDeltas - 1;
 
-    float sum = 0.0f;
+  float sum = 0.0f;
 
-    for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
-        sum += member(i + 1) - member(i);
-    }
+  for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
+      sum += member(i + 1) - member(i);
+  }
 
-    const float meanDelta = sum / baselineDeltaCount;
+  const float meanDelta = sum / baselineDeltaCount;
 
-    float variance = 0.0f;
+  float variance = 0.0f;
 
-    for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
-        const float delta = member(i + 1) - member(i);
-        const float diff = delta - meanDelta;
-        variance += diff * diff;
-    }
+  for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
+      const float delta = member(i + 1) - member(i);
+      const float diff = delta - meanDelta;
+      variance += diff * diff;
+  }
 
-    variance /= baselineDeltaCount;
+  variance /= baselineDeltaCount;
 
-    const float stdDelta = sqrtf(variance);
-    const float threshold =
-        fmaxf(kSigmaMultiplier * stdDelta, variability);
+  const float stdDelta = sqrtf(variance);
+  const float threshold =
+      fmaxf(kSigmaMultiplier * stdDelta, variability);
 
-    const uint16_t first = stored - kRequiredRisingDeltas;
+  const uint16_t first = stored - kRequiredRisingDeltas;
 
-    for (uint16_t i = first; i < stored; ++i) {
-        const float delta = member(i) - member(i - 1);
+  for (uint16_t i = first; i < stored; ++i) {
+      const float delta = member(i) - member(i - 1);
 
-        if (delta <= threshold) {
-            return false;
-        }
-    }
-
-    return true;
+      if (delta <= threshold) {
+          return false;
+      }
+  }
+  return true;
 }
 
 int8_t sampleEvaluateSteadyTrend(

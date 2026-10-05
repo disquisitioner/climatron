@@ -6,7 +6,7 @@
 #ifndef CLIMATRON_H
   #define CLIMATRON_H
 
-  #include <Arduino.h>  // for String, uint16_t
+  #include <Arduino.h>  // for String
 
   // device data
   struct hdweData {
