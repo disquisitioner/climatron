@@ -1332,13 +1332,13 @@ void OWMForecastSimulate()
 
     midpoint = (kSensorTempFMin + kSensorTempFMax)/2.0;
     owmSiteForecast.cityName = String("Pleasantville (US)");
-    for(loop=0;loop<5;loop++) {
+    for(loop=0; loop<5; loop++) {
       owmSiteForecast.forecastData[loop].maxTempF = randomFloat(midpoint,kSensorTempFMax);
       owmSiteForecast.forecastData[loop].minTempF = randomFloat(kSensorTempFMin,midpoint);
       owmSiteForecast.forecastData[loop].humidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
       owmSiteForecast.forecastData[loop].wxFcst = random(1,6);  // Confirm consistent with forecast defines FCST_*
       owmSiteForecast.forecastData[loop].count = 40;
-      owmSiteForecast.forecastData[loop].wday = i;
+      owmSiteForecast.forecastData[loop].wday = loop;
     }
     debugMessage(String("SIMULATED OWM Forecast for ") + owmSiteForecast.cityName, 1);
   #endif
