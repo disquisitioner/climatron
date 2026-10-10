@@ -94,23 +94,18 @@ uint32_t wfmPortalStartMS = 0;
 TFT_eSPI display = TFT_eSPI();
 enum screenNames screenCurrent = sMain; // Initial screen to display (on startup)
 
-// Screen specific functions that reside separately in screens.cpp
+// Screen functions residing in screens.cpp
 extern void screenMain();
 extern void screenVOC();
 extern void screenNOX();
 extern void screenCO2();
 extern void screenPM25();
 extern void screenForecast();
-// other functions residing in screens.cpp
-extern uint8_t co2Range(float);
-extern uint8_t pm25Range(float);
-extern uint8_t vocRange(float);
-extern uint8_t noxRange(float);
+extern void screenHelperAlert( const String &messageText, uint16_t fgColor, uint16_t bgColor, uint16_t borderColor);
 
 // CYD JC2432W328 -> CST820 capacitive touchscreen
 CST820 touchscreen(pinTouchSDA, pinTouchSCL, pinTouchRST, pinTouchIRQ);
 CST820Helper touchHelper(touchscreen);
-
 
 #ifdef THINGSPEAK
   extern bool post_thingspeak(float pm25, float co2, float temperatureF, float humidity, 
@@ -145,7 +140,7 @@ MqttConfig mqttBrokerConfig; // available globally for nvconfig use
 
 // Utility class used to streamline accumulating sensor values, averages, min/max &c.  Each
 // instance contains storage to retain points for subsequent processing, which are used
-// here to graph recent data. The size of that retatined data is based on the
+// here to graph recent data. The size of that retained data is based on the
 // kSampleCapacity value defined in config.h.
 Measure<kSampleCapacity> totalTemperatureF, totalHumidity, totalCO2, totalVOCIndex, totalPM25, totalNOxIndex;
 
@@ -160,12 +155,12 @@ bool alertSound = false;
 
 void setup() {
   // config Serial first for debugMessage()
-  #ifdef DEBUG
+  #if DEBUG
     Serial.begin(115200);
     // wait for serial port connection
     while (!Serial);
     // Display key configuration parameters
-    debugMessage(String("Starting Climatron with ") + (timeSensorSampleMS/1000) + String(" second sample interval"),1);
+    debugMessage(String("Starting Climatron with ") + (kTimeSensorSampleMS/1000) + String(" second sample interval"),1);
     #if defined(MQTT) || defined(INFLUX) || defined(HASSIO_MQTT) || defined(THINGSPEAK)
       debugMessage(String("Report interval is ") + (timeReportMS/60000) + " minutes",1);
     #endif
@@ -180,7 +175,7 @@ void setup() {
   display.setRotation(screenRotation);
   display.setTextWrap(false);
   display.fillScreen(TFT_BLACK);
-  // set LED backlight
+  // set screen backlight
   ledcAttach(TFT_BL, 5000, 8); // 5000 = pwm frequency, 8 = bit resolution
   ledcWrite(TFT_BL, screenBLMax);
 
@@ -201,7 +196,7 @@ void setup() {
 
   ledcAttach(pinAudio, audioFrequency, audioResolution);
 
-  // get configuration data before calling sensorInit() to load altitude value
+  // get configuration data before calling sensorSEN6xInit() to load altitude value
   if(!nvconfigRead()) {
     // no configuration parameters in non-volatile storage, so write defaults
     nvconfigDefaultsLoad();
@@ -209,35 +204,20 @@ void setup() {
   }   
 
   // initialize sensor(s)
-  if( !sensorInit()) {
+  if( !sensorSEN6xInit()) {
     // error often occurs after firmware flash/reset
     display.loadFont(Roboto_Regular_24);
     deviceReboot("Sensor failure, rebooting", 5000);
     display.unloadFont();
   }
   networkWiFiManagerOpen();
-  
-  // reset the head leds
-  pixels.fill(pixels.Color(0,0,0)); //black
-  pixels.show();
 }
 
 void loop() {
   static uint8_t numSamples               = 0;  // Number of sensor readings over reporting interval
-  static uint32_t timeLastSampleMS        = -(timeSensorSampleMS); // forces immediate sample in loop() 
+  static uint32_t timeLastSampleMS        = -(kTimeSensorSampleMS); // forces immediate sample in loop() 
   static uint32_t timeLastInputMS         = millis();  // timestamp for last user input (screensaver)
   uint16_t calibratedX, calibratedY;
-
-  // order of operation
-  // 0 - update current alerts
-  // 1 - feed cycles to LEDControl
-  // 2 - feed cycles to web portal
-  // 3 - handle touchscreen input
-  // 4 - handle button press
-  // ------------------------- interupts and cycles fed
-  // 5 - read sensor
-  // 6 - update screen saver
-  // 7 - network endpoint(s) write?
 
   // update current alerts
   alertHandle();
@@ -301,36 +281,18 @@ void loop() {
   // (reset) button press that needs to be handled?
   checkButtonPress();
 
-    // is it time to read the sensor?
-  if ((millis() - timeLastSampleMS) >= timeSensorSampleMS) {
+  // is it time to read the sensor?
+  if ((millis() - timeLastSampleMS) >= kTimeSensorSampleMS) {
     // Read sensor(s)
-    if (sensorRead()) {
+    if (sensorSEN6xRead()) {
       numSamples++;
       // IMPROVEMENT: evaluate whether the screen actually needs updated based on changed data
       screenUpdate(screenCurrent);
-      if (sampleEvaluate()) {
-        // ALERT: 5 second, sound, LED, and screen
-        alertLengthMS = 5000;
-        alertStartMS = millis();
-        alertScreen = true;
-        alertSound = true;
-        alertLED = true;
-        pixels.fill(pixels.Color(255,0,0)); // red
-        pixels.show();
-        ledcWriteTone(pinAudio, audioFrequency);
-        display.loadFont(Roboto_Regular_24);
-        screenHelperAlert("CO2 rising rapidly", TFT_WHITE,TFT_BLACK,TFT_RED);
-        display.unloadFont();
-      }
+      // evaluate the latest sample and handle alert cases
+      sampleEvaluate();
     }
     else {
-      // ALERT: 5 second screen alert, no sound or LEDs
-      alertScreen = true;
-      alertLengthMS = 5000;
-      alertStartMS = millis();
-      display.loadFont(Roboto_Regular_24);
-      screenHelperAlert("Sensor read fail", TFT_WHITE,TFT_BLACK,TFT_YELLOW);
-      display.unloadFont();
+      alertInitiate(kTimeSensorSampleMS, true, false, false, "Sensor read fail");
     }
     // Save last sample time
     timeLastSampleMS = millis();
@@ -384,191 +346,143 @@ void screenUpdate(uint8_t screenCurrent)
   }
 }
 
-/**
- * @brief Draw a centered rounded-rectangle "bubble" containing a one- or two-line message.
- *
- * The message is split using pixel width measurements and word boundaries. If the message
- * is too long, truncation is applied at the end of the overall message (ellipsis on line 2
- * only, or on line 1 if it must be single-line). The rounded rectangle and text are constrained
- * to stay within the display and within a horizontal safe region defined by @p kXMargins.
- *
- * Vertical centering behavior:
- * - If two lines are drawn, the vertical gap between the lines is centered on the screen.
- * - If one line is drawn, the text itself is centered on the screen.
- *
- * @param messageText Message to render inside the bubble.
- * @param fgColor   Text color.
- * @param bgColor   Bubble fill color (also used as text background color).
- * @param borderColor Bubble outline color.
- * @param kXMargins    Horizontal safe margin in pixels applied to both left and right edges.
- *
- * @note Set the desired font and text size on @p display before calling this function.
- */
-void screenHelperAlert( const String &messageText, uint16_t fgColor, uint16_t bgColor, uint16_t borderColor) {
-  debugMessage(String("screenHelperAlert start()"),1);
-
-  display.setTextColor(fgColor, bgColor, true);
-  display.setTextPadding(0);
-
-  const int16_t screenW = (int16_t)display.width();
-  const int16_t screenH = (int16_t)display.height();
-  const int16_t centerY = screenH / 2;
-
-  const int16_t safeLeft  = (int16_t)kXMargins;
-  const int16_t safeRight = (int16_t)(screenW - 1 - (int16_t)kXMargins);
-  const int16_t safeW     = safeRight - safeLeft + 1;
-  if (safeW <= 0) return;
-
-  const uint16_t lineHeight = (uint16_t)display.fontHeight();
-
-  uint8_t lineSpacing = (uint8_t)(lineHeight / 4);
-  if (lineSpacing < 2)  lineSpacing = 2;
-  if (lineSpacing > 10) lineSpacing = 10;
-
-  uint8_t padX = (uint8_t)(lineHeight / 3);
-  uint8_t padY = (uint8_t)(lineHeight / 4);
-  if (padX < 6) padX = 6;
-  if (padY < 4) padY = 4;
-
-  uint8_t radius = (uint8_t)(lineHeight / 3);
-  if (radius < 6)  radius = 6;
-  if (radius > 18) radius = 18;
-
-  const int16_t innerW_signed = safeW - (int16_t)(2 * padX);
-  const uint16_t innerW = (innerW_signed > 0) ? (uint16_t)innerW_signed : 0;
-  if (innerW == 0) return;
-
-  String line1, line2;
-  textSplitTwoLines(messageText, line1, line2, innerW);
-
-  const bool twoLines = (line2.length() > 0);
-
-  const int16_t w1 = (int16_t)display.textWidth(line1);
-  const int16_t w2 = twoLines ? (int16_t)display.textWidth(line2) : 0;
-  const int16_t textW = (w2 > w1) ? w2 : w1;
-
-  const int16_t textH = twoLines
-    ? (int16_t)(2 * (int16_t)lineHeight + (int16_t)lineSpacing)
-    : (int16_t)lineHeight;
-
-  int16_t rectW = textW + (int16_t)padX * 2;
-  int16_t rectH = textH + (int16_t)padY * 2;
-
-  if (rectW > safeW)   rectW = safeW;
-  if (rectH > screenH) rectH = screenH;
-
-  int16_t yTextTop;
-  if (!twoLines) {
-    yTextTop = centerY - (textH / 2);
-  } else {
-    const int16_t halfGapTop = (int16_t)(lineSpacing / 2);
-    yTextTop = centerY - halfGapTop - (int16_t)lineHeight;
-  }
-
-  int16_t rectX = safeLeft + (safeW - rectW) / 2;
-  int16_t rectY = yTextTop - (int16_t)padY;
-
-  const int16_t maxRectX = safeLeft + safeW - rectW;
-  if (rectX < safeLeft) rectX = safeLeft;
-  if (rectX > maxRectX) rectX = maxRectX;
-
-  if (rectY < 0) rectY = 0;
-  if (rectY + rectH > screenH) rectY = screenH - rectH;
-
-  const int16_t rectCenterX = rectX + rectW / 2;
-
-  display.fillRoundRect(rectX, rectY, rectW, rectH, radius, bgColor);
-  display.drawRoundRect(rectX, rectY, rectW, rectH, radius, borderColor);
-
-  display.setTextDatum(TC_DATUM);
-  const int16_t textTopY = rectY + (int16_t)padY;
-
-  display.drawString(line1, rectCenterX, textTopY);
-  if (twoLines) {
-    display.drawString(line2, rectCenterX,
-                   textTopY + (int16_t)lineHeight + (int16_t)lineSpacing);
-  }
-
-  debugMessage(String("screenHelperAlert end()"), 1);
-}
-
-bool sampleEvaluate()
+void sampleEvaluate()
 {
   debugMessage(String("sampleEvaluate() start"), 1);
 
-  static bool trendAlreadyReported = false;
+  if (sampleEvaluateRapidRise(totalTemperatureF, kSensorTempVariability))
+      alertInitiate(5000, true, true, true, "Temperature rising rapidly");
 
-  const uint16_t stored = totalCO2.getStored();
+  if (sampleEvaluateRapidRise(totalHumidity, kSensorHumidityVariability))
+    alertInitiate(5000, true, true, true, "Humidity rising rapidly");
 
-  if (stored < (kRequiredRisingDeltas + 1))
-  {
-    trendAlreadyReported = false;
-    return false;
+  if (sampleEvaluateRapidRise(totalCO2, kSensorCO2Variability))
+    alertInitiate(5000, true, true, true, "CO2 rising rapidly");
+
+  if(sampleEvaluateRapidRise(totalPM25, kSensorPMVariability))
+    alertInitiate(5000, true, true, true, "PM25 rising rapidly");
+
+  if(sampleEvaluateRapidRise(totalVOCIndex, kSensorVOCVariability))
+    alertInitiate(5000, true, true, true, "VOC rising rapidly");
+
+  if(sampleEvaluateRapidRise(totalNOxIndex, kSensorNOxVariability))
+      alertInitiate(5000, true, true, true, "NOx rising rapidly");
+
+  debugMessage(String("sampleEvaluate() end"),1);
+}
+
+bool sampleEvaluateRapidRise(
+    Measure<kSampleCapacity>& samples,
+    float variability)
+{
+  const uint16_t stored = samples.getStored();
+
+  // Need at least two historical deltas plus the recent deltas.
+  if (stored < (kRequiredRisingDeltas + 3)) {
+      return false;
   }
 
-  const uint16_t startIndex = stored - (kRequiredRisingDeltas + 1);
+  // Determine where valid samples start in the Measure buffer
+  const uint16_t offset = samples.getCapacity() - stored;
 
-  float deltas[kRequiredRisingDeltas];
+  // Helper function allowing you to work with samples from [zero]
+  auto member = [&](uint16_t index) -> float {
+      return samples.getMember(offset + index);
+  };
 
-  for (uint8_t i = 0; i < kRequiredRisingDeltas; ++i)
-  {
-    const uint16_t sampleIndex = startIndex + i;
+  // Exclude the most recent deltas from the baseline.
+  const uint16_t baselineDeltaCount =
+      stored - kRequiredRisingDeltas - 1;
 
-    deltas[i] = totalCO2.getMember(sampleIndex + 1)
-              - totalCO2.getMember(sampleIndex);
+  float sum = 0.0f;
+
+  for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
+      sum += member(i + 1) - member(i);
   }
 
-  float meanDelta = 0.0f;
-  for (uint8_t i = 0; i < kRequiredRisingDeltas; ++i)
-  {
-    meanDelta += deltas[i];
-  }
-  meanDelta /= kRequiredRisingDeltas;
+  const float meanDelta = sum / baselineDeltaCount;
 
   float variance = 0.0f;
-  for (uint8_t i = 0; i < kRequiredRisingDeltas; ++i)
-  {
-    const float diff = deltas[i] - meanDelta;
-    variance += diff * diff;
+
+  for (uint16_t i = 0; i < baselineDeltaCount; ++i) {
+      const float delta = member(i + 1) - member(i);
+      const float diff = delta - meanDelta;
+      variance += diff * diff;
   }
-  variance /= kRequiredRisingDeltas;
+
+  variance /= baselineDeltaCount;
 
   const float stdDelta = sqrtf(variance);
-  const float threshold = fmaxf(kSigmaMultiplier * stdDelta, kMinSigmaFloor);
+  const float threshold =
+      fmaxf(kSigmaMultiplier * stdDelta, variability);
 
-  bool rapidRisingTrend = true;
+  const uint16_t first = stored - kRequiredRisingDeltas;
 
-  for (uint8_t i = 0; i < kRequiredRisingDeltas; ++i)
-  {
-    if (deltas[i] < threshold)
-    {
-      rapidRisingTrend = false;
-      break;
+  for (uint16_t i = first; i < stored; ++i) {
+      const float delta = member(i) - member(i - 1);
+
+      if (delta <= threshold) {
+          return false;
+      }
+  }
+  return true;
+}
+
+int8_t sampleEvaluateSteadyTrend(
+    Measure<kSampleCapacity>& samples,
+    float variability,
+    uint16_t requiredDeltas = kRequiredRisingDeltas,
+    float toleranceFraction = 0.25f)
+{
+    if (!isfinite(variability) || variability <= 0.0f ||
+        !isfinite(toleranceFraction) ||
+        toleranceFraction < 0.0f || toleranceFraction >= 1.0f ||
+        requiredDeltas == 0) {
+        return 0;
     }
-  }
 
-  if (rapidRisingTrend && !trendAlreadyReported)
-  {
-    trendAlreadyReported = true;
+    const uint16_t stored = samples.getStored();
 
-    debugMessage(
-      String("Rapid CO2 rise detected across last ")
-      + (kRequiredRisingDeltas + 1)
-      + " samples",
-      1
-    );
+    if (stored <= requiredDeltas) {
+        return 0;
+    }
 
-    return true;
-  }
+    // Valid retained values are right-aligned.
+    const uint16_t offset = samples.getCapacity() - stored;
 
-  if (!rapidRisingTrend)
-  {
-    trendAlreadyReported = false;
-  }
+    const float minimumDelta =
+        variability * (1.0f - toleranceFraction);
+    const float maximumDelta =
+        variability * (1.0f + toleranceFraction);
 
-  debugMessage(String("sampleEvaluate(): no sustained trend detected"), 2);
-  debugMessage(String("sampleEvaluate() end"),1);
-  return false;
+    const uint16_t first = stored - requiredDeltas;
+    int8_t direction = 0;
+
+    for (uint16_t i = first; i < stored; ++i) {
+        const float delta =
+            samples.getMember(offset + i)
+            - samples.getMember(offset + i - 1);
+
+        if (!isfinite(delta)) {
+            return 0;
+        }
+
+        const float magnitude = fabsf(delta);
+
+        if (magnitude < minimumDelta || magnitude > maximumDelta) {
+            return 0;
+        }
+
+        const int8_t currentDirection = (delta > 0.0f) ? 1 : -1;
+
+        if (direction == 0) {
+            direction = currentDirection;
+        } else if (currentDirection != direction) {
+            return 0;
+        }
+    }
+
+    return direction;
 }
 
 /**
@@ -602,7 +516,7 @@ void samplePost(uint8_t& numSamples)
   // do we have samples to process?
   if (numSamples) {
     // can we report to network endPoints?
-    #ifndef HARDWARE_SIMULATE
+    #if (HARDWARE_SIMULATE == 0)
       // attemot to reconnect to WiFi if needed
       if (WiFi.status() != WL_CONNECTED) {
         WiFi.reconnect();
@@ -619,8 +533,12 @@ void samplePost(uint8_t& numSamples)
         float aqi = pm25toAQI_US(avgPM25);
 
         debugMessage(String("Averages being sent to endpoints for the last ") + (timeReportMS/60000) + " minutes",2);
-        debugMessage(String("PM2.5: ") + avgPM25 + "ppm, CO2: " + avgCO2 + "ppm, VOC index: " + avgVOC + ", NOx index: " + avgNOX + ", " + 
-          avgTemperatureF + "F, humidity: " + avgHumidity + "%", 2);
+        debugMessage(String("temp:") + avgTemperatureF
+          + "F, humidity:" + avgHumidity
+          + "%, CO2:" + avgCO2
+          + "ppm, PM2.5:" + avgPM25
+          + " ppm, VOC index:" + avgVOC
+          + ", NOx index:" + avgNOX, 2);
 
         // update RSSI before publishing
         hardwareData.rssi = networkRSSIRead();
@@ -671,18 +589,7 @@ void samplePost(uint8_t& numSamples)
     #endif
   }      
   else {
-    // ALERT: 5 second, sound, LED, and screen
-    alertLengthMS = 5000;
-    alertStartMS = millis();
-    alertScreen = true;
-    alertSound = true;
-    alertLED = true;
-    pixels.fill(pixels.Color(255,0,0)); // Red
-    pixels.show();
-    ledcWriteTone(pinAudio, audioFrequency);
-    display.loadFont(Roboto_Regular_24);
-    screenHelperAlert("No samples available", TFT_WHITE,TFT_BLACK,TFT_RED);
-    display.unloadFont();
+    alertInitiate(5000, true, true, true, "No samples available");
     debugMessage(String("samplePost() no samples to process this cycle"),1);
   }
   // Reset sample counters
@@ -696,15 +603,48 @@ void samplePost(uint8_t& numSamples)
   debugMessage(String("samplePost() end"), 1);
 }
 
-uint8_t networkRSSISimulate()
 // Description : returns simulated WiFi RSSI value from hardware or simulation value
 // Parameters: NA
 // Return : NA
 // Improvement : NA
+uint8_t networkRSSISimulate(uint8_t maxCycles)
 { 
-  uint8_t rssi = random(networkRSSIMin, networkRSSIMax);
-  debugMessage(String("returning simulated WiFi RSSI: -") + rssi + "db",1);
-  return(rssi);
+  debugMessage("networkRSSISimulate start()",1);
+
+  static uint8_t simulatedRSSI = 0;
+
+  #if HARDWARE_SIMULATE
+    static uint8_t cycleCount = 0;
+
+    switch (HARDWARE_SIMULATE) {
+      case 1: // random values, doesn't use maxCycles
+        simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax + 1);
+        break;
+      case 2:
+      default: // slight =/- values per cycle up to maxCycles
+        if (cycleCount == 0) {
+          simulatedRSSI = random(kNetworkRSSIMin, kNetworkRSSIMax + 1);
+        }
+        else {
+          const int32_t delta = randomSignedDelta(kNetworkRSSISimVariability);
+          const int32_t candidate = static_cast<int32_t>(simulatedRSSI) + delta;
+          const int32_t bounded = constrain(candidate, kNetworkRSSIMin, kNetworkRSSIMax);
+
+          simulatedRSSI = static_cast<uint8_t>(bounded);
+        }
+        cycleCount++;
+        if (cycleCount >= maxCycles)
+          cycleCount = 0;
+        break;
+      case 3: // out of bounds, "bad" values designed to activate alert modes
+        simulatedRSSI = (random(0,2)) ? kNetworkRSSIMin-2 : kNetworkRSSIMax+2;
+        break;
+    }
+
+    debugMessage(String("returning simulated WiFi RSSI: ") + simulatedRSSI + "db",1);
+  #endif
+  debugMessage("networkRSSISimulate end()",1);
+  return(simulatedRSSI);
 }
 
 void networkWiFiManagerBuildParameters()
@@ -1012,8 +952,8 @@ bool networkWiFiManagerOpen()
   // wm.setShowInfoErase(false);      // do not show erase button on info page
   // wm.setScanDispPerc(true);       // show RSSI as percentage not graph icons
 
-  // Enable WiFiManager debug outyput based on DEBUG definition
-  #if defined(DEBUG) && (DEBUG >= 2)
+  // conditionally enable WiFiManager debug output
+  #if (DEBUG == 2)
       wfm.setDebugOutput(true);
   #else
       wfm.setDebugOutput(false);
@@ -1042,8 +982,8 @@ bool networkWiFiManagerOpen()
   else {
     debugMessage("WiFi connection failure; local sensor data ONLY", 1);
     hardwareData.rssi = 255; // 255 indicates no WiFi connection 
-    #ifdef HARDWARE_SIMULATE
-      networkRSSISimulate();
+    #if HARDWARE_SIMULATE
+      networkRSSISimulate(kSimulationCycles);
     #endif
   }
   debugMessage("networkWiFiManagerOpen() end", 1);
@@ -1106,19 +1046,8 @@ void networkStartWiFiMgrPortal()
     debugMessage("Cannot start WiFiManager Web Portal; WiFi not connected", 1);
     return;
   }
-
-  alertLengthMS = 5000;
-  alertStartMS = millis();
-  alertScreen = true;
-
-  alertLED = true;
-  // set head leds to blue to indicate configuration state
-  pixels.fill(pixels.Color(0,0,255)); // blue
-  pixels.show();
-
-  display.loadFont(Roboto_Regular_24);
-  screenHelperAlert(String("goto http://") + WiFi.localIP().toString() + " for device configuration",TFT_WHITE,TFT_BLACK,TFT_BLUE);
-  display.unloadFont();
+  String alertMessage = "goto http://" + WiFi.localIP().toString() + " for device configuration";
+  alertInitiate(5000, true, false, true, alertMessage);
 
   wfm.setTitle("Climatron Configurator");
 
@@ -1151,8 +1080,8 @@ uint8_t networkRSSIRead()
 {
   uint8_t rssi;
 
-  #ifdef HARDWARE_SIMULATE
-    rssi = networkRSSISimulate();
+  #if HARDWARE_SIMULATE
+    rssi = networkRSSISimulate(kSimulationCycles);
   #else
     // attemot to reconnect to WiFi if needed
     if (WiFi.status() != WL_CONNECTED) {
@@ -1172,7 +1101,7 @@ uint8_t networkRSSIRead()
 void networkDisconnect()
 // Disconnect from WiFi network
 {
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     debugMessage("power off: SIMULATED WiFi",1);
     return;
   #else
@@ -1397,20 +1326,22 @@ void OWMForecastSimulate()
 // Return : NA
 // Improvement : variable city name and days of the week
 {
-  int i;
-  float midpoint;
+  #if HARDWARE_SIMULATE
+    int loop;
+    float midpoint;
 
-  midpoint = (sensorTempFMin + sensorTempFMax)/2.0;
-  owmSiteForecast.cityName = String("Pleasantville (US)");
-  for(i=0;i<5;i++) {
-    owmSiteForecast.forecastData[i].maxTempF = randomFloatRange(midpoint,sensorTempFMax);
-    owmSiteForecast.forecastData[i].minTempF = randomFloatRange(sensorTempFMin,midpoint);
-    owmSiteForecast.forecastData[i].humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-    owmSiteForecast.forecastData[i].wxFcst = random(1,6);  // Confirm consistent with forecast defines FCST_*
-    owmSiteForecast.forecastData[i].count = 40;
-    owmSiteForecast.forecastData[i].wday = i;
-  }
-  debugMessage(String("SIMULATED OWM Forecast for ") + owmSiteForecast.cityName, 1);
+    midpoint = (kSensorTempFMin + kSensorTempFMax)/2.0;
+    owmSiteForecast.cityName = String("Pleasantville (US)");
+    for(loop=0; loop<5; loop++) {
+      owmSiteForecast.forecastData[loop].maxTempF = randomFloat(midpoint,kSensorTempFMax);
+      owmSiteForecast.forecastData[loop].minTempF = randomFloat(kSensorTempFMin,midpoint);
+      owmSiteForecast.forecastData[loop].humidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
+      owmSiteForecast.forecastData[loop].wxFcst = random(1,6);  // Confirm consistent with forecast defines FCST_*
+      owmSiteForecast.forecastData[loop].count = 40;
+      owmSiteForecast.forecastData[loop].wday = loop;
+    }
+    debugMessage(String("SIMULATED OWM Forecast for ") + owmSiteForecast.cityName, 1);
+  #endif
 }
 
 /**
@@ -1442,7 +1373,7 @@ boolean OWMForecastRead()
   JsonDocument doc;
   Measure fcstTemperatureF, fcstHumidity;
 
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     OWMForecastSimulate();
     return true;
   #else
@@ -1559,28 +1490,67 @@ boolean OWMForecastRead()
   return true;
 }
 
-void OWMAirPollutionSimulate()
 // Description : Simulates Open Weather Map (OWM) Air Pollution data
 // Parameters: NA
 // Return : NA
 // Improvement : NA
+void OWMAirPollutionSimulate(uint8_t maxCycles)
 {
-  owmAirQuality.aqi = random(OWMAQIMin, OWMAQIMax);
-  owmAirQuality.pm25 = randomFloatRange(OWMPM25Min, OWMPM25Max);
-  debugMessage(String("SIMULATED OWM Air Pollution PM2.5: ") + owmAirQuality.pm25 + ", AQI: " + owmAirQuality.aqi,1);
+  debugMessage("OWMAirPollutionSimulate start()",1);
+
+  #if HARDWARE_SIMULATE
+    //static uint8_t simulatedAQI = 0;
+    static float simulatedPM25 = 0;
+    static uint8_t cycleCount = 0;
+
+    switch (HARDWARE_SIMULATE) {
+      case 1: // random values, doesn't use maxCycles
+        //simulatedAQI = random(kOWMAQIMin, kOWMAQIMax);
+        // map to PM25 sensor value simulation
+        simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+      break;
+      case 2: // slight =/- values per cycle up to maxCycles
+        if (cycleCount == 0) {
+          //simulatedAQI = random(kOWMAQIMin, kOWMAQIMax);
+          // map to PM25 sensor value simulation
+          simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+        }
+        else {
+          // conscience decision not to change AQI, as it's not likely to move > 1 during cycle time
+          simulatedPM25 = clampFloat(simulatedPM25 + randomFloatDelta(kSensorPMVariability),
+           kSensorPMMin, (kSensorPMBad + 100));
+        }
+
+        cycleCount++;
+        if (cycleCount >= maxCycles)
+          cycleCount = 0;
+        break;
+      case 3: // out of bounds, "bad" values designed to activate alert modes
+        simulatedPM25 = (random(0,2)) ? kSensorPMMin-2 : kSensorPMMax+2;
+        break;
+    }
+
+    // return simulated values
+    //owmAirQuality.aqi = simulatedAQI;
+    owmAirQuality.pm25 = simulatedPM25;
+    //debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25 + ", AQI: " + simulatedAQI,1);
+    debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25, 1);
+
+  #endif
+  debugMessage(String("networkRSSISimulate end()"),1);
 }
 
 bool OWMAirPollutionRead()
 // stores local air pollution info from Open Weather Map in environment global
 {
   debugMessage(String("OWMAirPollutionRead() start"), 1);
-  #ifdef HARDWARE_SIMULATE
-    OWMAirPollutionSimulate();
+
+  #if HARDWARE_SIMULATE
+    OWMAirPollutionSimulate(kSimulationCycles);
     return true;
   #else
     static int32_t timeLastOWMUpdateMS = -(timeOWMRenewMS); // forces immediate sample at first run
     
-    debugMessage(String("OWMAirPollutionRead() start"),1);
     // is it time for new OWM data?
     if (millis() - timeLastOWMUpdateMS > timeOWMRenewMS)
     {
@@ -1627,7 +1597,7 @@ bool OWMAirPollutionRead()
 
       // owmAirQuality.lon = (float) doc["coord"]["lon"];
       // owmAirQuality.lat = (float) doc["coord"]["lat"];
-      owmAirQuality.aqi  = doc["list"][0]["main"]["aqi"] | 0;
+      // owmAirQuality.aqi  = doc["list"][0]["main"]["aqi"] | 0;
       // owmAirQuality.co = (float) list_0_components["co"];
       // owmAirQuality.no = (float) list_0_components["no"];
       // owmAirQuality.no2 = (float) list_0_components["no2"];
@@ -1636,7 +1606,7 @@ bool OWMAirPollutionRead()
       owmAirQuality.pm25 = doc["list"][0]["components"]["pm2_5"] | NAN;
       // owmAirQuality.pm10 = (float) list_0_components["pm10"];
       // owmAirQuality.nh3 = (float) list_0_components["nh3"];
-      debugMessage(String("OWM Air Pollution PM2.5 is ") + owmAirQuality.pm25 + "μg/m3, AQI is " + owmAirQuality.aqi + " of 5",1);
+      debugMessage(String("OWM Air Pollution PM2.5 is ") + owmAirQuality.pm25 + "μg/m3",1);
 
       timeLastOWMUpdateMS = millis();
       debugMessage(String("OWMAirPollutionRead() end"),1);
@@ -1648,42 +1618,12 @@ bool OWMAirPollutionRead()
   return true;
 }
 
-bool sensorInit()
-// Generalized entry point for sensor initialization
-{
-  // Conditionally compiled based on the sensor configuration as defined in config.h
-  bool success = false;
-
-    success = sensorSEN6xInit();
-    if (success) {
-      #ifndef HARDWARE_SIMULATE
-        // Explicit delay as SEN66 takes 10-11 seconds for valid NOx index values
-        delay(12000);
-      #endif
-    }
-
-  return success;
-}
-
-bool sensorRead()
-// Generalized entry point for reading sensor values
-{
-  bool success = false;  // default setting for the final #ifndef
-
-  success = sensorSEN6xRead();
-  if (!success) {
-    debugMessage("SEN66 read failed",1);
-  }
-
-  return success;
-}
-
 // Initialize SEN66 sensor
 bool sensorSEN6xInit()
 {
   debugMessage ("sensorSEN6xInit() start",1);
 
-  #ifdef HARDWARE_SIMULATE
+  #if HARDWARE_SIMULATE
     return true;
   #else
       static char errorMessage[64];
@@ -1718,34 +1658,376 @@ bool sensorSEN6xInit()
           debugMessage(errorMessage,1);
           return false;
       }
-
       // TODO: Add support for setting custom temperature offset for SEN66
+      // Explicit delay as SEN66 takes 10-11 seconds for valid NOx index values
+      delay(12000);
       return true;
   #endif
 }
 
-void sensorSEN6xSimulate(float& simulatedTemperatureF, float& simulatedHumidity, uint16_t& simulatedCO2, float& simulatedPM25, float& simulatedVOCIndex, float& simulatedNOxIndex)
-// Description: Simulates sensor reading from SEN66 sensor
-//  leveraging other sensor simulations
-// Parameters: NA
-// Return: simulated values
-// Improvement: implement mode passthrough for other sensorSimulate APIs
+// Helper function that returns completely random values for all
+// air quality values
+void sensorSimulateRandom(
+  float& simulatedTemperatureF,
+  float& simulatedHumidity,
+  uint16_t& simulatedCO2,
+  float& simulatedPM25,
+  float& simulatedVOCIndex,
+  float& simulatedNOxIndex)
 {
-  debugMessage ("sensorSEN6xSimulate() start",1);
+  debugMessage ("sensorSimulateRandom() start",1);
+  #if HARDWARE_SIMULATE
+    simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
+    simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
+    simulatedCO2 = randomFloat(kSensorCO2Min, kSensorCO2Max);
+    // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
+    simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+    simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);
+    simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxMax);
+  #endif
+ debugMessage ("sensorSimulateRandom() end",1);
+}
 
-  simulatedPM25 = 0.0f;
-  simulatedTemperatureF = 0.0f;
-  simulatedHumidity = 0.0f;
-  simulatedVOCIndex = 0.0f;
-  simulatedNOxIndex = 0.0f;
-  simulatedCO2 = 0;
+void sensorSimulateVary(
+    float& simulatedTemperatureF,
+    float& simulatedHumidity,
+    uint16_t& simulatedCO2,
+    float& simulatedPM25,
+    float& simulatedVOCIndex,
+    float& simulatedNOxIndex,
+    kSensorType exclude = SENSOR_NONE)
+{
+  #if HARDWARE_SIMULATE
+    if (exclude != SENSOR_TEMP) {
+        simulatedTemperatureF = clampFloat(
+            simulatedTemperatureF + randomFloatDelta(kSensorTempVariability),
+            kSensorTempFMin,
+            kSensorTempFMax);
+    }
 
-  sensorSCD4xSimulate(1,10, simulatedTemperatureF, simulatedHumidity,simulatedCO2);
-  sensorSEN54Simulate(simulatedPM25, simulatedVOCIndex);
-  simulatedNOxIndex = randomFloatRange(sensorNOxMin, sensorNOxMax);
-  debugMessage(String("returning simulated noxIndex: ") + simulatedNOxIndex,1);
-  
-  debugMessage("sensorSEN6xSimulate() end",1);
+    if (exclude != SENSOR_HUMIDITY) {
+        simulatedHumidity = clampFloat(
+            simulatedHumidity + randomFloatDelta(kSensorHumidityVariability),
+            kSensorHumidityMin,
+            kSensorHumidityMax);
+    }
+
+    if (exclude != SENSOR_CO2) {
+        int32_t nextCO2 =
+            (int32_t)simulatedCO2 + randomSignedDelta(kSensorCO2Variability);
+
+        simulatedCO2 = (uint16_t)constrain(
+            nextCO2,
+            (int32_t)kSensorCO2Min,
+            (int32_t)kSensorCO2Max);
+    }
+
+    if (exclude != SENSOR_PM25) {
+        // Conscious decision to limit PM2.5 to Bad + 100 vs. Max
+        // to return a better value distribution.
+        simulatedPM25 = clampFloat(
+            simulatedPM25 + randomFloatDelta(kSensorPMVariability),
+            kSensorPMMin,
+            kSensorPMBad + 100);
+    }
+
+    if (exclude != SENSOR_VOC) {
+        simulatedVOCIndex = clampFloat(
+            simulatedVOCIndex + randomFloatDelta(kSensorVOCVariability),
+            kSensorVOCMin,
+            kSensorVOCMax);
+    }
+
+    if (exclude != SENSOR_NOX) {
+        simulatedNOxIndex = clampFloat(
+            simulatedNOxIndex + randomFloatDelta(kSensorNOxVariability),
+            kSensorNOxMin,
+            kSensorNOxMax);
+    }
+  #endif
+}
+
+void sensorSEN6xSimulate(
+  uint8_t maxCycles,
+  float& temperatureF,
+  float& humidity,
+  uint16_t& co2,
+  float& pm25,
+  float& VOCIndex,
+  float& NOxIndex)
+{
+  debugMessage("sensorSEN6xSimulate() start", 1);
+
+  #if HARDWARE_SIMULATE
+    static uint8_t cycleCount = 0;
+    static float simulatedTempF = 0.0f;
+    static float simulatedHumidity = 0.0f;
+    static uint16_t simulatedCO2 = 0;
+    static float simulatedPM25 = 0.0f;
+    static float simulatedVOCIndex = 0.0f;
+    static float simulatedNOxIndex = 0.0f;
+
+    // Used by modes 4 and 5.
+    auto selectedMaxVariability = [](kSensorType sensor) -> float {
+      switch (sensor) {
+          case SENSOR_TEMP:     return kSensorTempVariability;
+          case SENSOR_HUMIDITY: return kSensorHumidityVariability;
+          case SENSOR_CO2:      return kSensorCO2Variability;
+          case SENSOR_PM25:     return kSensorPMVariability;
+          case SENSOR_VOC:      return kSensorVOCVariability;
+          case SENSOR_NOX:      return kSensorNOxVariability;
+          default:             return 0.0f;
+      }
+    };
+
+    auto deleteSelectedRetained = [](kSensorType sensor) {
+      switch (sensor) {
+          case SENSOR_TEMP:     totalTemperatureF.deleteRetained(); break;
+          case SENSOR_HUMIDITY: totalHumidity.deleteRetained();     break;
+          case SENSOR_CO2:      totalCO2.deleteRetained();          break;
+          case SENSOR_PM25:     totalPM25.deleteRetained();         break;
+          case SENSOR_VOC:      totalVOCIndex.deleteRetained();     break;
+          case SENSOR_NOX:      totalNOxIndex.deleteRetained();     break;
+          default: break;
+      }
+    };
+
+    auto changeSelected = [&](kSensorType sensor, float delta) {
+      switch (sensor) {
+        case SENSOR_TEMP:
+            simulatedTempF = clampFloat(
+                simulatedTempF + delta,
+                kSensorTempFMin,
+                kSensorTempFMax);
+            break;
+
+          case SENSOR_HUMIDITY:
+              simulatedHumidity = clampFloat(
+                  simulatedHumidity + delta,
+                  kSensorHumidityMin,
+                  kSensorHumidityMax);
+              break;
+
+          case SENSOR_CO2:
+                default: {
+              // Preserve integer CO2 increments.
+              const int32_t nextCO2 =
+                  static_cast<int32_t>(simulatedCO2)
+                  + static_cast<int32_t>(delta);
+
+              simulatedCO2 = static_cast<uint16_t>(constrain(
+                  nextCO2,
+                  static_cast<int32_t>(kSensorCO2Min),
+                  static_cast<int32_t>(kSensorCO2Max)));
+              break;
+          }
+
+          case SENSOR_PM25:
+              simulatedPM25 = clampFloat(
+                  simulatedPM25 + delta,
+                  kSensorPMMin,
+                  kSensorPMBad + 100);
+              break;
+
+          case SENSOR_VOC:
+              simulatedVOCIndex = clampFloat(
+                  simulatedVOCIndex + delta,
+                  kSensorVOCMin,
+                  kSensorVOCMax);
+              break;
+
+          case SENSOR_NOX:
+              simulatedNOxIndex = clampFloat(
+                  simulatedNOxIndex + delta,
+                  kSensorNOxMin,
+                  kSensorNOxMax);
+              break;
+        }
+    };
+
+    switch (HARDWARE_SIMULATE) {
+      case 1:
+          // Random values every time.
+          sensorSimulateRandom(
+              simulatedTempF,
+              simulatedHumidity,
+              simulatedCO2,
+              simulatedPM25,
+              simulatedVOCIndex,
+              simulatedNOxIndex);
+          break;
+      case 2:
+      default:
+          // Random starting values, slightly +/- per cycle.
+          if (cycleCount == 0) {
+              sensorSimulateRandom(
+                  simulatedTempF,
+                  simulatedHumidity,
+                  simulatedCO2,
+                  simulatedPM25,
+                  simulatedVOCIndex,
+                  simulatedNOxIndex);
+          } else {
+              sensorSimulateVary(
+                  simulatedTempF,
+                  simulatedHumidity,
+                  simulatedCO2,
+                  simulatedPM25,
+                  simulatedVOCIndex,
+                  simulatedNOxIndex);
+          }
+
+          cycleCount++;
+          if (cycleCount >= maxCycles) {
+              cycleCount = 0;
+          }
+          break;
+      case 3:
+          // Out-of-bounds values every time.
+          simulatedTempF = random(0, 2)
+              ? kSensorTempFMin - 2 : kSensorTempFMax + 2;
+          simulatedHumidity = random(0, 2)
+              ? kSensorHumidityMin - 2 : kSensorHumidityMax + 2;
+          simulatedCO2 = random(0, 2)
+              ? kSensorCO2Min - 2 : kSensorCO2Max + 2;
+          simulatedPM25 = random(0, 2)
+              ? kSensorPMMin - 2 : kSensorPMMax + 2;
+          simulatedVOCIndex = random(0, 2)
+              ? kSensorVOCMin - 2 : kSensorVOCMax + 2;
+          simulatedNOxIndex = random(0, 2)
+              ? kSensorNOxMin - 2 : kSensorNOxMax + 2;
+          break;
+      case 4: {
+        // rapid directional change > rapid-rise threshold for one characteristic
+        constexpr uint8_t baselineSamples = 3;
+        static kSensorType specialSensor = SENSOR_NONE;
+
+        if (cycleCount == 0) {
+            specialSensor = static_cast<kSensorType>(random(SENSOR_TEMP, SENSOR_COUNT));
+            deleteSelectedRetained(specialSensor);
+
+            debugMessage(String("Spiked characteristic is ") + specialSensor,2);
+
+            sensorSimulateRandom(
+                simulatedTempF,
+                simulatedHumidity,
+                simulatedCO2,
+                simulatedPM25,
+                simulatedVOCIndex,
+                simulatedNOxIndex);
+
+            // Start the selected sensor low to provide room to rise.
+            switch (specialSensor) {
+                case SENSOR_TEMP:
+                    simulatedTempF = kSensorTempFMin;
+                    break;
+                case SENSOR_HUMIDITY:
+                    simulatedHumidity = kSensorHumidityMin;
+                    break;
+                case SENSOR_CO2:
+                    simulatedCO2 = kSensorCO2Min;
+                    break;
+                case SENSOR_PM25:
+                    simulatedPM25 = kSensorPMMin;
+                    break;
+                case SENSOR_VOC:
+                    simulatedVOCIndex = kSensorVOCMin;
+                    break;
+                case SENSOR_NOX:
+                    simulatedNOxIndex = kSensorNOxMin;
+                    break;
+                default:
+                    break;
+            }
+        } 
+        else {
+            // Vary other sensors while holding the selected one steady.
+            sensorSimulateVary(
+                simulatedTempF,
+                simulatedHumidity,
+                simulatedCO2,
+                simulatedPM25,
+                simulatedVOCIndex,
+                simulatedNOxIndex,
+                specialSensor);
+
+            // Counts 0, 1, and 2 supply the baseline.
+            // Count 3 supplies the first rising sample.
+            if (cycleCount >= baselineSamples) {
+                const float variability =
+                    selectedMaxVariability(specialSensor);
+
+                // Preserve the original integer random increments.
+                const float delta = random(
+                    variability * 2,
+                    variability * 4);
+
+                changeSelected(specialSensor, delta);
+            }
+        }
+
+        cycleCount++;
+        if (cycleCount >= maxCycles) {
+            cycleCount = 0;
+        }
+        break;
+      }
+      case 5: {
+        // small, consistent directional change < rapid-rise threshold for one characteristic
+        static kSensorType specialSensor = SENSOR_NONE;
+        static int8_t direction = 1;
+
+        if (cycleCount == 0) {
+          specialSensor = static_cast<kSensorType>(random(SENSOR_TEMP, SENSOR_COUNT));
+          deleteSelectedRetained(specialSensor);
+
+          direction = random(0, 2) ? 1 : -1;
+
+          sensorSimulateRandom(
+            simulatedTempF,
+            simulatedHumidity,
+            simulatedCO2,
+            simulatedPM25,
+            simulatedVOCIndex,
+            simulatedNOxIndex);
+        } 
+        else {
+          sensorSimulateVary(
+            simulatedTempF,
+            simulatedHumidity,
+            simulatedCO2,
+            simulatedPM25,
+            simulatedVOCIndex,
+            simulatedNOxIndex,
+            specialSensor);
+
+          changeSelected(specialSensor, direction * selectedMaxVariability(specialSensor));
+        }
+
+        cycleCount++;
+        if (cycleCount >= maxCycles) {
+            cycleCount = 0;
+        }
+        break;
+      }
+    }
+
+    temperatureF = simulatedTempF;
+    humidity = simulatedHumidity;
+    co2 = simulatedCO2;
+    pm25 = simulatedPM25;
+    VOCIndex = simulatedVOCIndex;
+    NOxIndex = simulatedNOxIndex;
+
+    debugMessage(String("simulated temp:") + simulatedTempF
+      + "F, humidity:" + simulatedHumidity
+      + "%, CO2:" + simulatedCO2
+      + "ppm, PM2.5:" + simulatedPM25
+      + " ppm, VOC index:" + simulatedVOCIndex
+      + ", NOx index:" + simulatedNOxIndex, 2);
+  #endif
+
+  debugMessage("sensorSEN6xSimulate() end", 1);
 }
 
 bool sensorSEN6xRead()
@@ -1755,17 +2037,17 @@ bool sensorSEN6xRead()
 // Improvement : Add support for checking isDataReady flag (see SCD40 read)
 {
   bool success = false;
-  float pm25 = 0.0f;
   float temperatureF = 0.0f;
   float humidity = 0.0f;
+  uint16_t co2 = 0;
+  float pm25 = 0.0f;
   float VOCIndex = 0.0f;
   float NOxIndex = 0.0f;
-  uint16_t co2 = 0;
 
   debugMessage ("sensorSEN6xRead() start",1);
 
-  #ifdef HARDWARE_SIMULATE
-    sensorSEN6xSimulate(temperatureF, humidity, co2, pm25, VOCIndex, NOxIndex);
+  #if HARDWARE_SIMULATE
+    sensorSEN6xSimulate(kSimulationCycles, temperatureF, humidity, co2, pm25, VOCIndex, NOxIndex);
     success = true;
   #else
     uint16_t error;
@@ -1786,39 +2068,39 @@ bool sensorSEN6xRead()
   #endif
 
   // range valid returned sensor values, even simulation values can be OOB
-  if (co2 < sensorCO2Min || co2 > sensorCO2Max) {
+  if (co2 < kSensorCO2Min || co2 > kSensorCO2Max) {
     success = false;
     debugMessage(String("SEN66 CO2 reading: ") + co2 + " is out of datasheet range",2);
   }
 
-  if (temperatureF < sensorTempFMin || temperatureF > sensorTempFMax) {
+  if (temperatureF < kSensorTempFMin || temperatureF > kSensorTempFMax) {
     success = false;
     debugMessage(String("SEN66 temperatureF reading: ") + temperatureF + " is out of datasheet range",2);
   }
 
-  if (humidity < sensorHumidityMin || humidity > sensorHumidityMax) {
+  if (humidity < kSensorHumidityMin || humidity > kSensorHumidityMax) {
     success = false;
     debugMessage(String("SEN66 humidity reading: ") + humidity + " is out of datasheet range",2);
   }
 
-  if (pm25 < sensorPMMin || pm25 > sensorPMMax) {
+  if (pm25 < kSensorPMMin || pm25 > kSensorPMMax) {
     success = false;
     debugMessage(String("SEN66 PM2.5 reading: ") + pm25 + " is out of datasheet range",2);
   }
 
-  if (VOCIndex < sensorVOCMin || VOCIndex > sensorVOCMax) {
+  if (VOCIndex < kSensorVOCMin || VOCIndex > kSensorVOCMax) {
     success = false;
     debugMessage(String("SEN66 VOC index reading: ") + VOCIndex + " is out of datasheet range",2);
   }
 
-  if (NOxIndex < sensorNOxMin || NOxIndex > sensorNOxMax) {
+  if (NOxIndex < kSensorNOxMin || NOxIndex > kSensorNOxMax) {
     success = false;
     debugMessage(String("SEN66 NOx index reading: ") + NOxIndex + " is out of datasheet range",2);
   }
 
   // valid measurement, update globals
   if (success) {
-    // Incorporate (and retain) validated measurements for further processing & reporting
+    // retain validated measurements
     totalTemperatureF.include(temperatureF);
     totalHumidity.include(humidity);
     totalCO2.include(co2);
@@ -1826,273 +2108,15 @@ bool sensorSEN6xRead()
     totalVOCIndex.include(VOCIndex);
     totalNOxIndex.include(NOxIndex);
 
-    debugMessage(String("SEN66 temp ") + totalTemperatureF.getCurrent() + "F, total across samples: " + totalTemperatureF.getTotal(),2);
-    debugMessage(String("SEN66 humidity ") + totalHumidity.getCurrent() + ", total across samples: " + totalHumidity.getTotal(),2);
-    debugMessage(String("SEN66 CO2 ") + totalCO2.getCurrent() + "ppm, total across samples: " + totalCO2.getTotal(),2);
-    debugMessage(String("SEN66 PM25 ") + totalPM25.getCurrent() + "ppm, total: " + totalPM25.getTotal(),2);
-    debugMessage(String("SEN66 VOC index ") + totalVOCIndex.getCurrent() + ", total: " + totalVOCIndex.getTotal(),2);
-    debugMessage(String("SEN66 NOx index ") + totalNOxIndex.getCurrent() + ", total: " + totalNOxIndex.getTotal(),2);
+    debugMessage(String("SEN66 temp:") + totalTemperatureF.getCurrent()
+      + "F, humidity:" + totalHumidity.getCurrent()
+      + "%, CO2:" + totalCO2.getCurrent()
+      + "ppm, PM2.5:" + totalPM25.getCurrent()
+      + " ppm, VOC index:" + totalVOCIndex.getCurrent()
+      + ", NOx index:" + totalNOxIndex.getCurrent(), 2);
   }
   debugMessage ("sensorSEN6xRead() end",1);
   return (success);
-}
-
-bool sensorSEN54Init()
-{
-  bool success = false;
-
-  debugMessage("sensorSEN54Init() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    success = true;
-  #else
-
-  #endif
-  debugMessage("sensorSEN54Init() end",1);
-  return success;
-}
-
-void sensorSEN54Simulate(float& simulatedPM25, float& simulatedVOCIndex)
-// Description: Simulates sensor reading from SEN54 sensor
-// Parameters: NA
-// Return: NA
-// Improvement: mode 1 from CO2 for VOC
-// Note: tempF and humidity come from SCD4X simulation
-{
-  //float pm1, pm10, pm4 = 0.0f;
-
-  debugMessage("sensorSEN54Simulate() start",1);
-
-  simulatedPM25 = randomFloatRange(sensorPMMin, sensorPMMax);
-  // pm1 = randomFloatRange(sensorPMMin, sensorPMMax);
-  // pm10 = randomFloatRange(sensorPMMin, sensorPMMax);
-  // pm4 = randomFloatRange(sensorPMMin, sensorPMMax);
-  simulatedVOCIndex = randomFloatRange(sensorVOCMin, sensorVOCMax);
-
-  debugMessage(String("returning simulated PM2.5: ") + simulatedPM25 + " ppm, VOC index: " + simulatedVOCIndex,1);
-  debugMessage("sensorSEN54Simulate() end",1);
-}
-
-bool sensorSEN554Read() 
-// Description: Retrieves values from SEN54 sensor
-// Parameters: none
-// Output : range validated pm25 and VOCIndex values, NAN NOxIndex value from SEN54
-// Improvement : Add support for checking isDataReady flag (see SCD40 read) 
-{
-  bool success = false;
-  float pm25 = 0.0f;
-  float VOCIndex = 0.0f;
-  float NOxIndex = 0.0f;
-
-  debugMessage("sensorSEN554Read() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    sensorSEN54Simulate(pm25, VOCIndex);
-    success = true;
-  #else
-    success = true;
-  #endif
-
-  // range valid returned sensor values, even simulation values can be OOB
-  if (pm25 < sensorPMMin || pm25 > sensorPMMax) {
-    success = false;
-    debugMessage(String("SEN5x PM2.5 reading: ") + pm25 + " is out of datasheet range",2);
-  }
-
-  if (VOCIndex < sensorVOCMin || VOCIndex > sensorVOCMax) {
-    success = false;
-    debugMessage(String("SEN5x VOC index reading: ") + VOCIndex + " is out of datasheet range",2);
-  }
-
-  // valid measurement, update globals
-  if (success) {
-    totalPM25.include(pm25);
-    totalVOCIndex.include(VOCIndex);
-    totalNOxIndex.include(NOxIndex);
-
-    debugMessage(String("sensorSEN554Read() updating pm25: ") + totalPM25.getCurrent() + "ppm, total: " + totalPM25.getTotal(),2);
-    debugMessage(String("sensorSEN554Read() updating vocIndex: ") + totalVOCIndex.getCurrent() + ", total: " + totalVOCIndex.getTotal(),2);
-    debugMessage(String("sensorSEN554Read() NOxIndex is NAN"),2);
-  }
-
-  debugMessage("sensorSEN554Read() end",1);
-  return(success);
-}
-
-bool sensorSCD4xInit()
-// initializes SCD4X to read
-{
-  bool success = false;
-
-  debugMessage("sensorSCD4xInit() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    success = true;
-  #else
-    success = true;
-  #endif
-
-  debugMessage("sensorSCD4xInit() end",1);
-  return success;
-}
-
-// Description: Simulates temp, humidity, and CO2 values from Sensirion SCD4X sensor
-// Parameters:
-//  mode
-//    default = random values, ignores cycles parameter
-//    1 = random values, slightly +/- per cycle
-//    2 = out of bounds, "bad" values designed to activate alert modes
-//    3 = rapidly rising values designed to activate sampleEvaluate()
-//  cycles = If used, determines how many times the current mode executes before resetting
-// Output : NA
-// Improvement : rapid CO2 rise mode to test sampleEvaluate()
-void sensorSCD4xSimulate(
-  uint8_t mode,
-  uint8_t cycles,
-  float& simulatedTempF,
-  float& simulatedHumidity,
-  uint16_t& simulatedCO2)
-{
-  static uint8_t currentMode = 0;
-  static uint8_t cycleCount = 0;
-  static float tempF, humidity = 0.0f;
-  static uint16_t co2 = 0;
-
-  debugMessage("sensorSCD4xSimulate() start",1);
-
-  if (mode != currentMode) {
-    cycleCount = 0;
-    currentMode = mode;
-  }
-
-  // random sign used in some modes
-  int8_t sign = random(0, 2) == 0 ? -1 : 1;
-
-  switch (currentMode) {
-  case 0: // 0 = random values, ignores cycles value
-    tempF = randomFloatRange(sensorTempFMin,sensorTempFMax);
-    humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-    co2 = random(sensorCO2Min, sensorCO2Max);
-    break;    
-  case 1: // 1 = random values, slightly +/- per cycle
-    if (cycleCount == cycles) {
-      cycleCount = 0;
-    }
-    if (!cycleCount) {
-      // create new base values
-      tempF = randomFloatRange(sensorTempFMin,sensorTempFMax);
-      humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-      co2 = random(sensorCO2Min, sensorCO2Bad); // starts values in highly likely scenarios
-      cycleCount++;
-    }
-    else
-    {
-      // slightly +/- CO2 value
-      co2 += (sign * random(0, sensorCO2VariabilityRange));
-      tempF += (sign * random(0, 3));
-      humidity += (-sign * random(0,3));
-      cycleCount++;
-    }
-    break;
-  case 2: // 2 = out of bounds, "bad" values designed to activate alert modes
-    tempF = (random(0,2)) ? sensorTempFMin-2 : sensorTempFMax+2;
-    humidity = (random(0,2)) ? sensorHumidityMin-2 : sensorHumidityMax+2;
-    co2 = (random(0,2)) ? sensorCO2Min-2 : sensorCO2Max+2;
-    break;
-  case 3: // rapidly rising values designed to activate sampleEvaluate()
-    if (cycleCount == cycles) {
-      cycleCount = 0;
-    }
-    if (!cycleCount) {
-      // clear the retained CO2 values so they don't affect std dev calculation
-      totalCO2.deleteRetained();
-      // create new base values
-      tempF = randomFloatRange((sensorTempFMin + (3 * cycles)),(sensorTempFMax - (3 * cycles))); // crude buffer for potential cycle movement
-      humidity = randomFloatRange((sensorHumidityMin + (3* cycles)),(sensorHumidityMax - (3 * cycles)));
-      co2 = random(sensorCO2Min, sensorCO2Bad); // vs. sensorCO2Max while produces unrealistic values
-      cycleCount++;
-    }
-    else
-    {
-      // rapidly spike CO2 value
-      co2 += random(kMinSigmaFloor * 2, kMinSigmaFloor * 4);
-      tempF += (sign * random(0, 3));
-      humidity += (-sign * random(0,3));
-      cycleCount++;
-    }
-    break;
-  default: // should not occur; random values, ignores cycles value
-    tempF = randomFloatRange(sensorTempFMin,sensorTempFMax);
-    humidity = randomFloatRange(sensorHumidityMin,sensorHumidityMax);
-    co2 = random(sensorCO2Min, sensorCO2Max);
-    break;
-  }
-  simulatedTempF = tempF;
-  simulatedHumidity = humidity;
-  simulatedCO2 = co2;
-  debugMessage(String("returning simulated temp: ") + simulatedTempF + "F, humidity: " + simulatedHumidity
-    + "%, CO2: " + simulatedCO2 + "ppm",1);
-
-  debugMessage("sensorSCD4xSimulate() end",1);
-}
-
-void sensorSCD4xSimulate(
-float& simulatedTempF,
-float& simulatedHumidity,
-uint16_t& simulatedCO2)
-{
-sensorSCD4xSimulate(0, 0, simulatedTempF, simulatedHumidity, simulatedCO2);
-}
-
-bool sensorSCD4xRead()
-// Description: Retrieves values from SCD4x sensor
-// Parameters: none
-// Output : range validated tempF, humidity, and CO2 values from SCD4x
-// Improvement : NA  
-{
-  bool success = false;
-  float temperatureF = 0.0f;
-  float humidity = 0.0f;
-  uint16_t co2 = 0;
-
-  debugMessage("sensorSCD4xRead() start",1);
-
-  #ifdef HARDWARE_SIMULATE
-    success = true;
-    sensorSCD4xSimulate(1, 10, temperatureF, humidity, co2);
-  #else
-    success = true;
-  #endif
-
-  // validate returned sensor values, even simulation can generate OOB values
-
-  if (co2 < sensorCO2Min || co2 > sensorCO2Max) {
-    success = false;
-    debugMessage(String("SCD4x CO2 reading: ") + co2 + " is out of datasheet range",2);
-  }
-
-  if (temperatureF < sensorTempFMin || temperatureF > sensorTempFMax) {
-    success = false;
-    debugMessage(String("SCD4x temperatureF reading: ") + temperatureF + " is out of datasheet range",2);
-  }
-
-  if (humidity < sensorHumidityMin || humidity > sensorHumidityMax) {
-    success = false;
-    debugMessage(String("SCD4x humidity reading: ") + humidity + " is out of datasheet range",2);
-  }
-
-  // valid measurement, update globals
-  if (success) {
-    totalTemperatureF.include(temperatureF);
-    totalHumidity.include(humidity);
-    totalCO2.include(co2);
-
-    debugMessage(String("SCD4x temp ") + totalTemperatureF.getCurrent() + "F, total across samples: " + totalTemperatureF.getTotal(),2);
-    debugMessage(String("SCD4x humidity ") + totalHumidity.getCurrent() + ", total across samples: " + totalHumidity.getTotal(),2);
-    debugMessage(String("SCD4x CO2 ") + totalCO2.getCurrent() + "ppm, total: " + totalCO2.getTotal(),2);
-  }
-  debugMessage("sensorSCD4xRead() end",1);
-  return(success);
 }
 
 String deviceGetID(String prefix)
@@ -2110,162 +2134,15 @@ String deviceGetID(String prefix)
 void deviceReboot(String messageText, uint16_t timeAlertMS)
 {
   debugMessage("deviceReboot() start",1);
-  display.loadFont(Roboto_Regular_18);
-  screenHelperAlert(messageText,TFT_WHITE,TFT_BLACK,TFT_RED);
-  display.unloadFont();
+
   networkDisconnect();
+  // we don't care about the alertInitiate duration because of the restart
+  alertInitiate(timeAlertMS, true, true, true, messageText);
+  // delay for user to read screen alert message
+  delay(timeAlertMS);
 
-  uint32_t timeRebootStartMS = millis();
-
-  while (millis() - timeRebootStartMS < timeAlertMS)
-  {
-    #ifndef HARDWARE_SIMULATE
-      pixels.fill(pixels.Color(255,0,0)); // red
-      pixels.show();
-      ledcWriteTone(pinAudio, audioFrequency);
-      delay(500);
-      pixels.fill(pixels.Color(0,0,0)); // black
-      pixels.show();
-      ledcWriteTone(pinAudio,0);
-      delay(500);
-    #endif
-  }
   debugMessage("deviceReboot() end",1);
   ESP.restart();
-}
-
-/**
- * @brief Truncate a string to fit within a maximum pixel width by appending an ellipsis.
- *
- * Uses the currently active TFT_eSPI font/text settings to measure rendered pixel width.
- * If the string exceeds @p maxWidthPixels, it is truncated and "..." is appended.
- *
- * @param s    Input string to be truncated if necessary.
- * @param maxWidthPixels Maximum allowed rendered pixel width (pixels).
- *
- * @return A string guaranteed to render at <= @p maxWidthPixels pixels (or empty if even "..." won't fit).
- */
-static String ellipsizeToWidth(const String &s, uint16_t maxWidthPixels) {
-  if ((uint16_t)display.textWidth(s) <= maxWidthPixels) return s;
-
-  String text = s;
-  text.trim();
-
-  const String ell = "...";
-  const uint16_t ellWidth = (uint16_t)display.textWidth(ell);
-  if (ellWidth > maxWidthPixels) return "";
-
-  int16_t lo = 0;
-  int16_t hi = (int16_t)text.length();
-  int16_t best = 0;
-
-  while (lo <= hi) {
-    int16_t mid = (int16_t)((lo + hi) / 2);
-    String candidate = text.substring(0, mid);
-    candidate.trim();
-
-    uint16_t w = (uint16_t)display.textWidth(candidate);
-    if ((uint16_t)(w + ellWidth) <= maxWidthPixels) {
-      best = mid;
-      lo = (int16_t)(mid + 1);
-    } 
-    else {
-        hi = (int16_t)(mid - 1);
-    }
-  }
-
-  String result = text.substring(0, best);
-  result.trim();
-
-  // Avoid awkward trailing punctuation before "..."
-  while (result.length() > 0) {
-    char c = result[result.length() - 1];
-    if (c == ' ' || c == '.' || c == ',' || c == ':' || c == ';' || c == '-') 
-      result.remove(result.length() - 1);
-    else 
-      break;
-  }
-
-  return result + ell;
-}
-
-/**
- * @brief Split a message into one or two lines using pixel width and word boundaries.
- *
- * Attempts to split on a single space such that line 1 fits without truncation and
- * any truncation (ellipsis) represents the end of the overall message (i.e., is applied
- * to line 2 only). If no word-boundary split can produce a non-truncated line 1, the
- * function falls back to a single-line ellipsized result.
- *
- * @param s           Input message to split.
- * @param line1       Output: first line of text.
- * @param line2       Output: second line of text (empty if not used).
- * @param maxWidthPixels    Maximum allowed rendered pixel width for each line (pixels).
- *
- * @note This function relies on the current TFT_eSPI font/text settings for measurements.
- */
-void textSplitTwoLines(
-  const String &s,
-  String &line1,
-  String &line2,
-  uint16_t maxWidthPixels
-) {
-
-  if (s.length() == 0 || maxWidthPixels == 0) {
-    line1 = "";
-    line2 = "";
-    return;
-  }
-
-  if ((uint16_t)display.textWidth(s) <= maxWidthPixels) {
-    line1 = s;
-    line2 = "";
-    return;
-  }
-
-  String text = s;
-  text.trim();
-
-  const uint16_t len = (uint16_t)text.length();
-
-  int16_t bestSplit = -1;
-  uint16_t bestLine1Width = 0;
-  uint32_t bestOverflowScore = 0xFFFFFFFFUL; // initally guaranteed to be > than any real overflow score 
-
-  for (uint16_t loop = 1; loop + 1 < len; loop++) {
-    if (text[loop] != ' ') continue;
-    if (text[loop - 1] == ' ' || text[loop + 1] == ' ') continue;
-
-    String a = text.substring(0, loop);   a.trim();
-    String b = text.substring(loop + 1);  b.trim();
-
-    const uint16_t widthA = (uint16_t)display.textWidth(a);
-    if (widthA > maxWidthPixels) continue; // line1 must fit WITHOUT ellipsis
-
-    const uint16_t widthB = (uint16_t)display.textWidth(b);
-    const uint16_t overflow2 = (widthB > maxWidthPixels) ? (uint16_t)(widthB - maxWidthPixels) : 0;
-
-    const uint32_t score = (uint32_t)overflow2;
-
-    if (widthA > bestLine1Width || (widthA == bestLine1Width && score < bestOverflowScore)) {
-      bestLine1Width = widthA;
-      bestOverflowScore = score;
-      bestSplit = (int16_t)loop;
-    }
-  }
-
-  if (bestSplit >= 0) {
-    line1 = text.substring(0, (uint16_t)bestSplit);        line1.trim();
-    line2 = text.substring((uint16_t)bestSplit + 1);       line2.trim();
-
-    if ((uint16_t)display.textWidth(line2) > maxWidthPixels) {
-      line2 = ellipsizeToWidth(line2, maxWidthPixels);
-    }
-    return;
-  }
-
-  line1 = ellipsizeToWidth(text, maxWidthPixels);
-  line2 = "";
 }
 
 float pm25toAQI_US(float pm25)
@@ -2283,17 +2160,6 @@ float pm25toAQI_US(float pm25)
   debugMessage(String("PM2.5 value of ") + pm25 + " converts to US AQI value " + aqiValue, 2);
 
   return aqiValue;
-}
-
-float fmap(float x, float xmin, float xmax, float ymin, float ymax)
-{
-  return( ymin + ((x - xmin)*(ymax-ymin)/(xmax - xmin)));
-}
-
-float randomFloatRange(uint16_t min, uint16_t max) {
-  uint16_t randomFixed = random((max-min) * 100 + 1);
-  // return float with 2 decimal precision
-  return min + (randomFixed / 100.0f);
 }
 
 void ledInit()
@@ -2317,6 +2183,28 @@ uint32_t rgb565ToNeopixelColor(uint16_t c)
     b = (b << 3) | (b >> 2);
 
     return pixels.Color(r, g, b);
+}
+
+void alertInitiate(uint16_t durationMS, bool screenAlert, bool soundAlert,
+   bool ledAlert, String alertMessage)
+{
+  alertLengthMS = durationMS;
+  alertStartMS = millis();
+  if (screenAlert) {
+    alertScreen = true;
+    display.loadFont(Roboto_Regular_24);
+    screenHelperAlert(alertMessage, TFT_WHITE,TFT_BLACK,TFT_RED);
+    display.unloadFont();
+  }
+  if (soundAlert) {
+    alertSound = true;
+    ledcWriteTone(pinAudio, audioFrequency);
+  }
+  if (ledAlert) {
+    alertLED = true;
+    pixels.fill(pixels.Color(255,0,0)); // red
+    pixels.show();
+  }
 }
 
 void alertHandle() {
@@ -2343,6 +2231,54 @@ void alertHandle() {
   }
 }
 
+uint8_t co2Range(float co2) 
+// converts co2 value to index value for labeling and color
+{
+  uint8_t co2Range = 
+    (co2 <= kSensorCO2Fair) ? 0 :
+    (co2 <= kSensorCO2Poor) ? 1 :
+    (co2 <= kSensorCO2Bad)  ? 2 : 3;
+
+  debugMessage(String("CO2 input of ") + co2 + " yields CO2 band " + co2Range, 2);
+  return co2Range;
+}
+
+uint8_t pm25Range(float pm25)
+// converts pm25 value to index value for labeling and color
+{
+  uint8_t aqi =
+  (pm25 <= kSensorPMFair) ? 0 :
+  (pm25 <= kSensorPMPoor) ? 1 :
+  (pm25 <= kSensorPMBad) ? 2 : 3;
+
+  debugMessage(String("PM2.5 input of ") + pm25 + " yields " + aqi + " aqi",2);
+  return aqi;
+}
+
+uint8_t vocRange(float vocIndex)
+// converts vocIndex value to index value for labeling and color
+{
+  uint8_t vocRange =
+  (vocIndex <= kSensorVOCFair) ? 0 :
+  (vocIndex <= kSensorVOCPoor) ? 1 :
+  (vocIndex <= kSensorVOCBad)  ? 2 : 3;
+
+  debugMessage(String("VOC index input of ") + vocIndex + " yields VOC band " + vocRange,2);
+  return vocRange;
+}
+
+uint8_t noxRange(float noxIndex)
+// converts noxIndex value to index value for labeling and color
+{
+  uint8_t noxRange =
+  (noxIndex <= kSensorNOxFair) ? 0 :
+  (noxIndex <= kSensorNOxPoor) ? 1 :
+  (noxIndex <= kSensorNOxBad)  ? 2 : 3;
+
+  debugMessage(String("NOx index input of ") + noxIndex + " yields NOx band " + noxRange,2);
+  return noxRange;
+}
+
 // Determine the right warning color to use for an arbitrary sensor data value given
 // the type of data in question.  This utility is used heavily in various screen drawing
 // routines (see screens.cpp) but also for managing the notification LEDs in Climatron.
@@ -2350,22 +2286,22 @@ uint16_t getWarningColor(uint8_t datatype, float datavalue)
 {
   switch(datatype) {
     case CO2_DATA:
-      return(warningColor[co2Range(datavalue)]);
+      return(kWarningColor[co2Range(datavalue)]);
     case VOC_DATA:
-      return(warningColor[vocRange(datavalue)]);
+      return(kWarningColor[vocRange(datavalue)]);
     case NOX_DATA:
-      return(warningColor[noxRange(datavalue)]);
+      return(kWarningColor[noxRange(datavalue)]);
     case PM_DATA:
-      return(warningColor[pm25Range(datavalue)]);
+      return(kWarningColor[pm25Range(datavalue)]);
     case TEMP_DATA:
       // Alternatively could explicitly return TFT_GREEN & TFT_YELLOW for temperature 
-      // & humidity comfort zones but using warningColor[0] and warningColor[1] provides 
+      // & humidity comfort zones but using kWarningColor[0] and kWarningColor[1] provides 
       // configurable consistency with other warning/comfort coloration
-      if( (datavalue < sensorTempFComfortMin) || (datavalue > sensorTempFComfortMax) ) return(warningColor[1]); // "Fair"
-      else return(warningColor[0]);  // "Good"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) return(kWarningColor[1]); // "Fair"
+      else return(kWarningColor[0]);  // "Good"
     case HUM_DATA:
-      if( (datavalue < sensorHumidityComfortMin) || (datavalue > sensorHumidityComfortMax) ) return(warningColor[1]); // "Fair"
-      else return(warningColor[0]); // "Good"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) return(kWarningColor[1]); // "Fair"
+      else return(kWarningColor[0]); // "Good"
     default:
       return(TFT_WHITE);
   }
@@ -2391,11 +2327,11 @@ uint16_t getWarningTextColor(uint8_t datatype, float datavalue)
       windex = pm25Range(datavalue);
       break;
     case TEMP_DATA:
-      if( (datavalue < sensorTempFComfortMin) || (datavalue > sensorTempFComfortMax) ) windex = 1; // "Fair"
+      if( (datavalue < kSensorTempFComfortMin) || (datavalue > kSensorTempFComfortMax) ) windex = 1; // "Fair"
       else windex = 0;  // "Good"
       break;
     case HUM_DATA:
-      if( (datavalue < sensorHumidityComfortMin) || (datavalue > sensorHumidityComfortMax) ) windex = 1; // "Fair"
+      if( (datavalue < kSensorHumidityComfortMin) || (datavalue > kSensorHumidityComfortMax) ) windex = 1; // "Fair"
       else windex = 0; // "Good"
       break;
     default:
@@ -2410,10 +2346,41 @@ uint16_t getWarningTextColor(uint8_t datatype, float datavalue)
   else return(TFT_WHITE);
 }
 
+/////////////////////////////////////////
+// Math functions
+/////////////////////////////////////////
+
+int32_t randomSignedDelta(int32_t range) {
+    return random(-range, range + 1);
+}
+
+float fmap(float x, float xmin, float xmax, float ymin, float ymax)
+{
+  return( ymin + ((x - xmin)*(ymax-ymin)/(xmax - xmin)));
+}
+
+float randomFloat(uint16_t minValue, uint16_t maxValue) {
+    uint32_t rangeFixed = (uint32_t)(maxValue - minValue) * 100U;
+    uint32_t randomFixed = random(rangeFixed + 1U);
+
+    return minValue + randomFixed / 100.0f;
+}
+
+float randomFloatDelta(float range) {
+    int32_t rangeFixed = (int32_t)(fabsf(range) * 100.0f);
+    return random(-rangeFixed, rangeFixed + 1) / 100.0f;
+}
+
+float clampFloat(float value, float minValue, float maxValue) {
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
+}
+
 void debugMessage(String messageText, uint8_t messageLevel)
 // wraps Serial.println as #define conditional
 {
-  #ifdef DEBUG
+  #if DEBUG
     if (messageLevel <= DEBUG) {
       Serial.println(messageText);
       Serial.flush();      // Make sure the message gets output (before any sleeping...)
