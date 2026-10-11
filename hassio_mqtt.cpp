@@ -96,10 +96,10 @@ mqtt:
           - "Climatron-0857" 
  */
 
-#include "Arduino.h"
 #include "config.h" // hardware and internet configuration parameters
 
 #if defined MQTT && defined HASSIO_MQTT
+  #include "Arduino.h"
   #include "climatron.h"  // overall header info for Powered Air Quality
   #include "secrets.h" // private credentials for network, MQTT, weather provider
   // MQTT setup
@@ -130,10 +130,7 @@ mqtt:
     topic = "homeassistant/" + endpointPath.site + "/" + endpointPath.location + "/" +
       endpointPath.room + "/" + endpointPath.deviceID + "/state";
 
-    debugMessage("Publishing Climatron values to Home Assistant via MQTT (state topic below)",1);
-    debugMessage(topic,1);
-
-    // Generate the state topic payload (as JSON)
+    // Generate and serialize the state topic payload (as JSON)
     doc["temperatureF"] = temperatureF;
     doc["humidity"] = humidity;
     doc["co2"] = co2;
@@ -141,20 +138,16 @@ mqtt:
     doc["vocIndex"] = vocIndex;
     doc["noxIndex"] = noxIndex;
     doc["aqi"] = aqi;
-
-    // Serialize the payload so it can be posted via MQTT
     serializeJson(doc,output);
-    debugMessage(output,1);  // Print the payload for review
 
-    // Publish state info to its topic
-    // Confirm we're connected to the MQTT broker, and if so publish to the state topic
+    // Confirm we're connected to the MQTT broker, and if so, publish to the generated topic
     if (mqtt.connected()) {
       if (mqtt.publish(topic.c_str(), output)) {
         success = true;
-        debugMessage(String("MQTT publish topic is ") + topic + ", message is " + output,2);
+        debugMessage(String("Published Home Assistant MQTT topic ") + topic + ", message is " + output,2);
       }
       else {
-        debugMessage(String("MQTT publish to topic ") + topic + " failed",1);
+        debugMessage(String("Home Assistant MQTT publish to topic ") + topic + " failed",1);
       }
     }
     else {

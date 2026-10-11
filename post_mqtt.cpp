@@ -16,10 +16,6 @@
   // Shared helper function
   extern void debugMessage(String messageText, uint8_t messageLevel);
 
-  #ifdef HASSIO_MQTT
-    extern bool hassio_mqtt_publish(float pm25, float co2, float temperatureF, float humidity, float vocIndex, float noxIndex, float aqi);
-  #endif
-
   bool mqttConnect() {
     bool connected = false;
 
@@ -49,17 +45,17 @@
   // configuration data.  The KEY passed in should correspond to the value being published,
   // and is defined in data.h.
   bool mqttPublishValue(String key, const String& payload) {
-      bool success = false;
+    bool success = false;
 
     // Generate the MQTT topic from site configuration data and the provided value-specific key
     String topic = endpointPath.site + "/" + endpointPath.location + "/" + endpointPath.room +
       "/" + hardwareDeviceType + "/" + endpointPath.deviceID + "/" + key;
 
-    // Confirm we're connected to the MQTT broker, and if so publish to the generated topic
+    // Confirm we're connected to the MQTT broker, and if so, publish to the generated topic
     if (mqtt.connected()) {
       if (mqtt.publish(topic.c_str(), payload.c_str())) {
         success = true;
-        debugMessage(String("MQTT publish topic is ") + topic + ", message is " + payload,2);
+        debugMessage(String("Published MQTT topic ") + topic + ", message is " + payload,2);
       }
       else
         debugMessage(String("MQTT publish to topic ") + topic + " failed",1);

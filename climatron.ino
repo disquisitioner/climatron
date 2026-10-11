@@ -570,9 +570,7 @@ void samplePost(uint8_t& numSamples)
             mqttPublishValue(VALUE_KEY_CO2, String(avgCO2));
             mqttPublishValue(VALUE_KEY_NOX, String(avgNOX));
 
-
             #ifdef HASSIO_MQTT
-              debugMessage("Establishing MQTT for Home Assistant",1);
               // Either configure sensors in Home Assistant's configuration.yaml file
               // directly or attempt to do it via MQTT auto-discovery
               // hassio_mqtt_setup();  // Config for MQTT auto-discovery
