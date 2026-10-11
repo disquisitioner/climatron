@@ -75,7 +75,7 @@ constexpr uint16_t kWarningColor[4] = {
 // Timers
 // Internet and network endpoints
 constexpr uint8_t timeConnectTimeoutSeconds = 10; // how long WFM attempts network connect before failing
-constexpr uint32_t timeOWMRenewMS = 1800000; // min time between OWM calls
+constexpr uint32_t kTimeOWMRenewMS = 1800000; // minimal allowed time in ms between OWM calls
 constexpr uint32_t timeWebPortalTimeOutMS = 360000; // how long web configuration portal stays active
 
 constexpr uint32_t timeHardwareSleepTimeμS = 10000000;  // sleep time if hardware error occurs

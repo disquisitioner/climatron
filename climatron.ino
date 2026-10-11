@@ -1360,131 +1360,152 @@ void OWMForecastSimulate()
  *
  * @warning 
  */
-boolean OWMForecastRead()
+bool OWMForecastRead()
 {
-  uint16_t httpResponseCode, wxcond, wxrange;
-  uint32_t dt, lt;
-  int32_t i, count, tzoffset;
-  uint8_t wd, today, condflags, forecastday;
-  float maxtemp, mintemp, curtemp, humidity;
-  String wxcondname;
-  JsonDocument doc;
-  Measure fcstTemperatureF, fcstHumidity;
+  debugMessage(String("OWMAirForecastRead() start"), 1);
 
   #if HARDWARE_SIMULATE
     OWMForecastSimulate();
     return true;
   #else
-    HTTPClient http;
-    // Attempt to connect to OWM service for 3-hour forecast data
-    static String serverPath = kOWMServer + kOWMForecastPath + 
-      "lat=" + hardwareData.latitude + "&lon=" + hardwareData.longitude + "&units=imperial&APPID=" + OWMKey;
-    debugMessage("OWM Forecast fetch: " + String(serverPath),1);
-    if(!http.begin(serverPath)) {
-          debugMessage("OWM weather forecast connection failed",1);
-      return false;
-    }
-
-    // Successfully connected, see if forecast data was returned
-    httpResponseCode = http.GET();
-    if(httpResponseCode != HTTP_CODE_OK) {
-      debugMessage(String("OWM Forecast HTTP GET error code: ") + httpResponseCode,1);
-      http.end();
-      return false;
-    }
-
-    // Retrieved forecast data, so process it
-    debugMessage("OWM HTTP GET success",2);
-
-    // Obtain the HTTP GET result payload and convert to a JSON doc
-    DeserializationError error = deserializeJson(doc,http.getStream());
-    http.end();   
-
-    /*
-    * Print the full payload (to assist in development)
-    Serial.println("**** OWM payload returned *****");
-    serializeJsonPretty(doc,Serial);
-    Serial.println("***** End of Payload *****");
-    */
+    static int32_t timeLastOWMUpdateMS = -(kTimeOWMRenewMS); // forces immediate sample at first run
     
-    // Extract overall info from OWM forecast payload
+    // is it time for new OWM data?
+    if (millis() - timeLastOWMUpdateMS > kTimeOWMRenewMS) {
 
-    count = doc["cnt"];  // Number of forecasts in the payload list
-    tzoffset = doc["city"]["timezone"];  // Used to adjust UTC forecasts to local time
-
-    condflags = 0;  // Clear out wx condition accumulator
-    forecastday = 0;  // Start storing forecast data on the zeroth day
-    // Clear temperature and humidity accumulation so we start fresh
-    fcstTemperatureF.clear();
-    fcstHumidity.clear();
-
-    // Process all forecasts returned, which are in the "list" element of the JSON doc
-    for(i=0;i<count;i++) {
-      dt = doc["list"][i]["dt"];  // UTC of forecast
-      lt = dt + tzoffset;         // Convert to local time
-      wd = weekday(lt);           // Use Time library to determine day of week
-
-      // Fetch key forecast elements from the payload
-      curtemp = doc["list"][i]["main"]["temp"];
-      humidity = doc["list"][i]["main"]["humidity"];
-      wxcond = doc["list"][i]["weather"][0]["id"];
-      wxcondname = String(doc["list"][i]["weather"][0]["main"]);
-      owmSiteForecast.cityName = String(doc["city"]["name"]);
-
-      // Aggregate daily data
-      if(i == 0) {
-        today = wd;  // Set today based on the first forecast element
+      // attemot to reconnect to WiFi if needed
+      if (WiFi.status() != WL_CONNECTED) {
+        WiFi.reconnect();
       }
-      // If the forecast info is not for today then we need wrap up today's
-      // info, store it for future use, and reset for this new day.
-      if(wd != today) {
-        // Retain daily forecast elements in the global data structure ***
-        owmSiteForecast.forecastData[forecastday].maxTempF = fcstTemperatureF.getMax();
-        owmSiteForecast.forecastData[forecastday].minTempF = fcstTemperatureF.getMin();
-        owmSiteForecast.forecastData[forecastday].humidity = fcstHumidity.getAverage();
-        owmSiteForecast.forecastData[forecastday].wxFcst   = forecastMap[condflags];
-        owmSiteForecast.forecastData[forecastday].count    = fcstTemperatureF.getCount();
-        owmSiteForecast.forecastData[forecastday].wday     = today-1;
 
-        //Reset things for the new day, including clearing min/max/avg accumulation
-        today = wd;
-        condflags = 0;
-        forecastday++;
-        fcstTemperatureF.clear();
-        fcstHumidity.clear();
-      }
-      // Now process this daily forecast element
-      fcstTemperatureF.include(curtemp);
-      fcstHumidity.include(humidity);
-      // Aggregate conditions across wide range of possible values returned by OWM
-      // See https://openweathermap.org/api/weather-conditions#Weather-Condition-Codes-2 for details
-      wxrange = wxcond / 100; // Identify OWM condition group (hundreds digit)
-      if(wxcond == 800) {
-        condflags |= WX_CLEAR;
-      }
-      // Any 2xx, 3xx, or 5xx code translates to Rainy
-      if(wxrange == 2 || wxrange == 3 || wxrange == 5) {
-        condflags |= WX_RAINY;
-      }
-      // Recognize various cloud cover conditions, and treat Atmospheric as cloudy
-      if(wxcond == 801 || wxcond == 802 || wxcond == 803 || wxcond == 804 || wxrange == 7) {
-        condflags |= WX_CLOUDY;
-      }
-      if(wxrange == 6) {
-        condflags |= WX_SNOWY;
-      }
-    }  
-    // Summarize what we have for the last day
-    // Retain daily forecast elements in the global data structure ***
-    owmSiteForecast.forecastData[forecastday].maxTempF = fcstTemperatureF.getMax();
-    owmSiteForecast.forecastData[forecastday].minTempF = fcstTemperatureF.getMin();
-    owmSiteForecast.forecastData[forecastday].humidity = fcstHumidity.getAverage();
-    owmSiteForecast.forecastData[forecastday].wxFcst   = forecastMap[condflags];
-    owmSiteForecast.forecastData[forecastday].count    = fcstTemperatureF.getCount();
-    owmSiteForecast.forecastData[forecastday].wday     = today-1;
+      // Attempt to connect to OWM service for 3-hour forecast data
 
-    return true;
+      // http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={API key}
+      static String serverPath = kOWMServer + kOWMForecastPath + 
+        "lat=" + hardwareData.latitude + "&lon=" + hardwareData.longitude + "&units=imperial&APPID=" + OWMKey;
+
+      HTTPClient http;
+      if(!http.begin(serverPath)) {
+        debugMessage("OWM Forecast URL malformed or HTTP client didn't initialize",1);
+        return false;
+      }
+
+      // Successfully connected, see if forecast data was returned
+      uint16_t httpResponseCode = http.GET();
+      if(httpResponseCode != HTTP_CODE_OK) {
+        debugMessage(String("OWM Forecast HTTP GET error: ") + HTTPClient::errorToString(httpResponseCode),1);
+        http.end();
+        return false;
+      }
+
+      // Obtain the HTTP GET result payload and convert to a JSON doc
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc,http.getStream());
+      http.end();
+
+      if (error) {
+        debugMessage(String("OWM Forecast deserializeJson error message: ") + error.c_str(), 1);
+        return false;
+      }  
+
+      /*
+      * Print the full payload (to assist in development)
+      Serial.println("**** OWM payload returned *****");
+      serializeJsonPretty(doc,Serial);
+      Serial.println("***** End of Payload *****");
+      */
+      
+      // Extract overall info from OWM forecast payload
+
+      uint16_t wxcond, wxrange;
+      uint32_t dt, lt;
+      int32_t i;
+      uint8_t wd, today, condflags, forecastday;
+      float maxtemp, mintemp, curtemp, humidity;
+      String wxcondname;
+      Measure fcstTemperatureF, fcstHumidity;
+
+      int32_t count = doc["cnt"];  // Number of forecasts in the payload list
+      int32_t tzoffset = doc["city"]["timezone"];  // Used to adjust UTC forecasts to local time
+
+      condflags = 0;  // Clear out wx condition accumulator
+      forecastday = 0;  // Start storing forecast data on the zeroth day
+      // Clear temperature and humidity accumulation so we start fresh
+      fcstTemperatureF.clear();
+      fcstHumidity.clear();
+
+      // Process all forecasts returned, which are in the "list" element of the JSON doc
+      for(i=0;i<count;i++) {
+        dt = doc["list"][i]["dt"];  // UTC of forecast
+        lt = dt + tzoffset;         // Convert to local time
+        wd = weekday(lt);           // Use Time library to determine day of week
+
+        // Fetch key forecast elements from the payload
+        curtemp = doc["list"][i]["main"]["temp"];
+        humidity = doc["list"][i]["main"]["humidity"];
+        wxcond = doc["list"][i]["weather"][0]["id"];
+        wxcondname = String(doc["list"][i]["weather"][0]["main"]);
+        owmSiteForecast.cityName = String(doc["city"]["name"]);
+
+        // Aggregate daily data
+        if(i == 0) {
+          today = wd;  // Set today based on the first forecast element
+        }
+        // If the forecast info is not for today then we need wrap up today's
+        // info, store it for future use, and reset for this new day.
+        if(wd != today) {
+          // Retain daily forecast elements in the global data structure ***
+          owmSiteForecast.forecastData[forecastday].maxTempF = fcstTemperatureF.getMax();
+          owmSiteForecast.forecastData[forecastday].minTempF = fcstTemperatureF.getMin();
+          owmSiteForecast.forecastData[forecastday].humidity = fcstHumidity.getAverage();
+          owmSiteForecast.forecastData[forecastday].wxFcst   = forecastMap[condflags];
+          owmSiteForecast.forecastData[forecastday].count    = fcstTemperatureF.getCount();
+          owmSiteForecast.forecastData[forecastday].wday     = today-1;
+
+          //Reset things for the new day, including clearing min/max/avg accumulation
+          today = wd;
+          condflags = 0;
+          forecastday++;
+          fcstTemperatureF.clear();
+          fcstHumidity.clear();
+        }
+        // Now process this daily forecast element
+        fcstTemperatureF.include(curtemp);
+        fcstHumidity.include(humidity);
+        // Aggregate conditions across wide range of possible values returned by OWM
+        // See https://openweathermap.org/api/weather-conditions#Weather-Condition-Codes-2 for details
+        wxrange = wxcond / 100; // Identify OWM condition group (hundreds digit)
+        if(wxcond == 800) {
+          condflags |= WX_CLEAR;
+        }
+        // Any 2xx, 3xx, or 5xx code translates to Rainy
+        if(wxrange == 2 || wxrange == 3 || wxrange == 5) {
+          condflags |= WX_RAINY;
+        }
+        // Recognize various cloud cover conditions, and treat Atmospheric as cloudy
+        if(wxcond == 801 || wxcond == 802 || wxcond == 803 || wxcond == 804 || wxrange == 7) {
+          condflags |= WX_CLOUDY;
+        }
+        if(wxrange == 6) {
+          condflags |= WX_SNOWY;
+        }
+      }  
+      // Summarize what we have for the last day
+      // Retain daily forecast elements in the global data structure ***
+      owmSiteForecast.forecastData[forecastday].maxTempF = fcstTemperatureF.getMax();
+      owmSiteForecast.forecastData[forecastday].minTempF = fcstTemperatureF.getMin();
+      owmSiteForecast.forecastData[forecastday].humidity = fcstHumidity.getAverage();
+      owmSiteForecast.forecastData[forecastday].wxFcst   = forecastMap[condflags];
+      owmSiteForecast.forecastData[forecastday].count    = fcstTemperatureF.getCount();
+      owmSiteForecast.forecastData[forecastday].wday     = today-1;
+
+      timeLastOWMUpdateMS = millis();
+      debugMessage(String("OWMAirForecastRead() end"),1);
+      return true;
+    }
   #endif
+
+  debugMessage(String("OWMAirForecastRead() end without update"), 1);
   return true;
 }
 
@@ -1535,7 +1556,7 @@ void OWMAirPollutionSimulate(uint8_t maxCycles)
     debugMessage(String("returning simulated OWM PM2.5: ") + simulatedPM25, 1);
 
   #endif
-  debugMessage(String("networkRSSISimulate end()"),1);
+  debugMessage(String("OWMAirPollutionSimulate() end"),1);
 }
 
 bool OWMAirPollutionRead()
@@ -1547,10 +1568,10 @@ bool OWMAirPollutionRead()
     OWMAirPollutionSimulate(kSimulationCycles);
     return true;
   #else
-    static int32_t timeLastOWMUpdateMS = -(timeOWMRenewMS); // forces immediate sample at first run
+    static int32_t timeLastOWMUpdateMS = -(kTimeOWMRenewMS); // forces immediate sample at first run
     
     // is it time for new OWM data?
-    if (millis() - timeLastOWMUpdateMS > timeOWMRenewMS)
+    if (millis() - timeLastOWMUpdateMS > kTimeOWMRenewMS)
     {
       // attemot to reconnect to WiFi if needed
       if (WiFi.status() != WL_CONNECTED) {
@@ -1558,7 +1579,7 @@ bool OWMAirPollutionRead()
       }
 
     // http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={API key}
-    String serverPath = kOWMServer + kOWMAQMPath +
+    static String serverPath = kOWMServer + kOWMAQMPath +
      "lat=" + hardwareData.latitude + "&lon=" + hardwareData.longitude + "&APPID=" + OWMKey;
 
       HTTPClient http;
@@ -1567,13 +1588,15 @@ bool OWMAirPollutionRead()
         return false;
       }
 
-      int httpResponseCode = http.GET();
+      // Successfully connected, see if pollution data was returned
+      uint16_t httpResponseCode = http.GET();
       if (httpResponseCode != HTTP_CODE_OK) {
         debugMessage(String("OWM AirPollution HTTP GET error: ") + HTTPClient::errorToString(httpResponseCode),1);
         http.end();
         return false;
       }
 
+      // create a JSON doc from GET results
       // Filter: only parse what we need (saves RAM)
       JsonDocument filter;
       filter["list"][0]["main"]["aqi"] = true;
@@ -1604,7 +1627,7 @@ bool OWMAirPollutionRead()
       owmAirQuality.pm25 = doc["list"][0]["components"]["pm2_5"] | NAN;
       // owmAirQuality.pm10 = (float) list_0_components["pm10"];
       // owmAirQuality.nh3 = (float) list_0_components["nh3"];
-      debugMessage(String("OWM Air Pollution PM2.5 is ") + owmAirQuality.pm25 + "μg/m3",1);
+      debugMessage(String("OWM Air Pollution PM2.5 is ") + owmAirQuality.pm25 + "ug/m3",1);
 
       timeLastOWMUpdateMS = millis();
       debugMessage(String("OWMAirPollutionRead() end"),1);
@@ -1612,7 +1635,7 @@ bool OWMAirPollutionRead()
     }
   #endif
 
-  debugMessage(String("OWMAirPollutionRead() end"), 1);
+  debugMessage(String("OWMAirPollutionRead() end without update"), 1);
   return true;
 }
 
