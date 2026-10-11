@@ -90,10 +90,10 @@ constexpr uint32_t timeScreenSaverStartMS = 300000; // switch to screen saver if
 // How many samples are retained by Measure library in a FIFO queue
 constexpr uint8_t kSampleCapacity = 10;
 
-#if defined (DEBUG) && !defined (HARDWARE_SIMULATE)
-  // time between sensor reads, e.g. samples
+// time between sensor reads, e.g. samples
+#if DEBUG && !HARDWARE_SIMULATE
   constexpr uint32_t kTimeSensorSampleMS = 30000; // minimum inter-sample time for many sensors
-#elif defined(DEBUG) && defined (HARDWARE_SIMULATE)
+#elif DEBUG && HARDWARE_SIMULATE
   constexpr uint32_t kTimeSensorSampleMS = 15000; // rapid samples for debugging
 #else // Production sample pace
   constexpr uint32_t kTimeSensorSampleMS = 60000;

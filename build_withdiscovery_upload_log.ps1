@@ -53,16 +53,30 @@ if ($LASTEXITCODE -eq 0) {
         $logPort.ReadTimeout = 100
         $logPort.Open()
 
-        $message = "Watching $($logPort.PortName). Press Ctrl+C to stop."
+        $message = "$(Get-Date -Format 'MM/dd HH:mm:ss') Watching $($logPort.PortName). Press Ctrl+C to stop."
         Write-Host $message
         $logWriter.WriteLine($message)
+
+        # Keep line state across reads: one serial line can arrive in several chunks.
+        $atLineStart = $true
 
         while ($true) {
             $text = $logPort.ReadExisting()
 
             if ($text.Length -gt 0) {
-                Write-Host -NoNewline $text
-                $logWriter.Write($text)
+                foreach ($part in [regex]::Split($text, '(?<=\n)')) {
+                    if ($part.Length -eq 0) { continue }
+
+                    if ($atLineStart) {
+                        $timestamp = (Get-Date -Format 'MM/dd HH:mm:ss') + ' '
+                        Write-Host -NoNewline $timestamp
+                        $logWriter.Write($timestamp)
+                    }
+
+                    Write-Host -NoNewline $part
+                    $logWriter.Write($part)
+                    $atLineStart = $part.EndsWith("`n")
+                }
             }
 
             Start-Sleep -Milliseconds 50
