@@ -1703,12 +1703,13 @@ void sensorSimulateRandom(
   #if HARDWARE_SIMULATE
     simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
     simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
-    // conscience decision to limit CO2 to Bad + 500 to return better value distribution
+    // limiting CO2 to Bad + 500 for better random value distribution
     simulatedCO2 = random(kSensorCO2Min, kSensorCO2Bad + 500);
-    // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
-    simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
+    // limiting PM25 to Bad + 100 for better random value distribution
+    simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100.0f));
     simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);
-    simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxMax);
+    // limiting NOxIndex to Bad + 100 for better random value distribution
+    simulatedNOxIndex = randomFloat(kSensorNOxMin, kSensorNOxBad + 100.0f);
   #endif
  debugMessage ("sensorSimulateRandom() end",1);
 }
