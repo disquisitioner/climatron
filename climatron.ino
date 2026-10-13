@@ -210,7 +210,10 @@ void setup() {
     deviceReboot("Sensor failure, rebooting", 5000);
     display.unloadFont();
   }
-  networkWiFiManagerOpen();
+  #if !HARDWARE_SIMULATE
+    // rssi is being simulated, and we don't need nvconfig prefs
+    networkWiFiManagerOpen();
+  #endif
 }
 
 void loop() {
@@ -1700,7 +1703,8 @@ void sensorSimulateRandom(
   #if HARDWARE_SIMULATE
     simulatedTemperatureF = randomFloat(kSensorTempFMin,kSensorTempFMax);
     simulatedHumidity = randomFloat(kSensorHumidityMin,kSensorHumidityMax);
-    simulatedCO2 = randomFloat(kSensorCO2Min, kSensorCO2Max);
+    // conscience decision to limit CO2 to Bad + 500 to return better value distribution
+    simulatedCO2 = random(kSensorCO2Min, kSensorCO2Bad + 500);
     // conscience decision to limit PM25 to Bad + 100 v. Max to return better value distribution
     simulatedPM25 = randomFloat(kSensorPMMin, (kSensorPMBad + 100));
     simulatedVOCIndex = randomFloat(kSensorVOCMin, kSensorVOCMax);

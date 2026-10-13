@@ -10,17 +10,17 @@
 // Configuration Step 1: Create and/or configure secrets.h. Use secrets_template.h as guide to create secrets.h
 
 // Configuration Step 2: Set network data endpoints
-#define MQTT     // log sensor data to MQTT broker
-#define HASSIO_MQTT  // Enables MQTT output to Home Assistant that has MQTT integration enabled
+// #define MQTT     // log sensor data to MQTT broker
+// #define HASSIO_MQTT  // Enables MQTT output to Home Assistant that has MQTT integration enabled
 // #define INFLUX // Log data to InfluxDB server
-#define THINGSPEAK  // Log data to ThingSpeak
+// #define THINGSPEAK  // Log data to ThingSpeak
 
 // Configuration Step 3: Set debug message mode
 // Modes
 // 0 = OFF
 // 1 = summary
 // 2 = verbose
-#define DEBUG 2
+// #define DEBUG 2
 
 // Configuration Step 4: Set hardware simulation mode
 // Modes
@@ -30,7 +30,7 @@
 // 3 = out of bounds values every time
 // 4 = rapid directional change > rapid-rise threshold for one characteristic
 // 5 = small, consistent directional change < rapid-rise threshold for one characteristic
-#define HARDWARE_SIMULATE 0
+#define HARDWARE_SIMULATE 2
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
