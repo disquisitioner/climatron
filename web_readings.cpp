@@ -44,7 +44,10 @@
 @media (prefers-color-scheme:dark){:root{--bg:#141414;--card:#1f1f1f;--text:#eee;--muted:#999;--line:#555}}
 body{margin:0;padding:16px;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,sans-serif}
 h1{font-size:1.4em;margin:0 0 4px}
-#meta{color:var(--muted);font-size:.9em;margin-bottom:16px}
+#meta{color:var(--muted);font-size:.9em;margin-bottom:10px}
+#ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;font-size:.9em}
+#ctl select,#ctl button{font:inherit;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+#ctl button{cursor:pointer}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .card{background:var(--card);border-radius:10px;padding:12px 14px;border-left:6px solid var(--line)}
 .head{display:flex;justify-content:space-between;align-items:baseline}
@@ -60,6 +63,7 @@ svg text{fill:var(--muted);font-size:11px}
 .b0{border-left-color:#2e9e44}.b1{border-left-color:#e2c11b}.b2{border-left-color:#f08c00}.b3{border-left-color:#d23a2a}
 </style></head><body>
 <h1 id="title">Climatron</h1><div id="meta">Loading…</div>
+<div id="ctl"><label>Graph span <select id="sp"></select></label><button id="devbtn" type="button"></button></div>
 <div class="grid" id="grid"></div>
 <div id="device"><h2>Device</h2><table id="devtab"></table></div>
 <script>
@@ -73,23 +77,29 @@ const items=[
 function band(k,v,t){const r=t[k];if(!r)return null;
  if(r.length==2)return(v<r[0]||v>r[1])?1:0;
  return v<=r[0]?0:v<=r[1]?1:v<=r[2]?2:3}
-// Same scaling as screenHelperGraph(): pad range, round axis labels to multiples of 10
-function graph(k,h,cap,t){if(!h||!h.length)return'<svg viewBox="0 0 300 120"><text x="150" y="60" text-anchor="middle">Awaiting samples</text></svg>';
+function spanName(s){return s<120?s+" s":s<3600?+(s/60).toFixed(1)+" min":+(s/3600).toFixed(1)+" h"}
+function ago(s){return"−"+spanName(Math.round(s))}
+// Same scaling as screenHelperGraph(); x axis labels show the age of the points across spanS seconds
+function graph(k,h,cap,t,spanS){if(!h||!h.length)return'<svg viewBox="0 0 300 134"><text x="150" y="60" text-anchor="middle">Awaiting samples</text></svg>';
  let mn=Math.min(...h),mx=Math.max(...h),r=mx-mn;if(r<10)r=50;const a=(mx+mn)/2;
  mx=10*Math.ceil((a+r)/10);mn=10*Math.floor((a-r)/10);
- const L=40,R=292,T=6,B=112,dx=(R-L-10)/(cap-1),off=cap-h.length;
+ const L=40,R=292,T=6,B=112,dx=(R-L-10)/Math.max(cap-1,1),off=cap-h.length,rad=cap>12?3:4.5;
  const pts=h.map((v,i)=>[L+10+(i+off)*dx,B-(v-mn)/(mx-mn)*(B-T)]);
- let s='<svg viewBox="0 0 300 120"><text x="'+(L-4)+'" y="'+(T+8)+'" text-anchor="end">'+mx+'</text><text x="'+(L-4)+'" y="'+B+'" text-anchor="end">'+mn+'</text>'+
+ const X0=L+10,XM=(X0+R)/2,span=spanS;
+ let s='<svg viewBox="0 0 300 134"><text x="'+(L-4)+'" y="'+(T+8)+'" text-anchor="end">'+mx+'</text><text x="'+(L-4)+'" y="'+B+'" text-anchor="end">'+mn+'</text>'+
+  '<text x="'+X0+'" y="128" text-anchor="start">'+ago(span)+'</text><text x="'+XM+'" y="128" text-anchor="middle">'+ago(span/2)+'</text><text x="'+R+'" y="128" text-anchor="end">now</text>'+
   '<path d="M'+L+' '+T+'V'+B+'H'+R+'" fill="none" stroke="var(--line)"/>'+
   '<polyline fill="none" stroke="var(--text)" stroke-width="1.5" points="'+pts.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ")+'"/>';
- pts.forEach((p,i)=>{const b=band(k,h[i],t);s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="4.5" fill="'+(b==null?"var(--text)":COL[b])+'"><title>'+h[i]+'</title></circle>'});
+ pts.forEach((p,i)=>{const b=band(k,h[i],t);s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+rad+'" fill="'+(b==null?"var(--text)":COL[b])+'"><title>'+h[i]+'</title></circle>'});
  return s+'</svg>'}
-async function load(){try{const d=await(await fetch("/data.json")).json();
+async function load(){const req=spanIdx;try{const d=await(await fetch("/data.json?span="+req)).json();
+ if(req!==spanIdx)return; // span changed while this request was out
  document.getElementById("title").textContent=d.deviceID;
- document.getElementById("meta").textContent=(d.simulated?"SIMULATED data · ":"")+"Updated "+d.ageSeconds+" s ago · last "+d.capacity+" samples · WiFi "+d.rssi+" dBm";
+ document.getElementById("meta").textContent=(d.simulated?"SIMULATED data · ":"")+"Updated "+d.ageSeconds+" s ago · sampled every "+spanName(d.device.sampleS)+" · WiFi "+d.rssi+" dBm";
+ spanIdx=d.span;showSpans(d.spans);
  document.getElementById("grid").innerHTML=items.map(([k,n,u,dp])=>{const v=d[k],b=band(k,v,d.thresholds);
   return'<div class="card '+(b==null?"":"b"+b)+'"><div class="head"><span class="name">'+n+'</span>'+(b==null?"":'<span class="lbl" style="color:'+COL[b]+'">'+LBL[b]+'</span>')+
-  '</div><div class="val">'+v.toFixed(dp)+' <span class="unit">'+u+'</span></div>'+graph(k,d.history[k],d.capacity,d.thresholds)+'</div>'}).join("")
+  '</div><div class="val">'+v.toFixed(dp)+' <span class="unit">'+u+'</span></div>'+graph(k,d.history[k],d.capacity,d.thresholds,d.spans[d.span])+'</div>'}).join("")
  const v=d.device;if(v)document.getElementById("devtab").innerHTML=[
   ["MAC address",v.mac],["Firmware build",v.build],["Arduino core / IDF",v.core+" / "+v.idf],["Chip",v.chip],
   ["IP address",v.ip],["WiFi network",v.ssid],["WiFi signal",d.rssi+" dBm"],["Uptime",dur(v.uptime)],
@@ -100,31 +110,86 @@ async function load(){try{const d=await(await fetch("/data.json")).json();
   ["Settings portal (when open)","http://"+v.ip+":"+v.portalPort]
  ].map(([k,x])=>"<tr><td>"+k+"</td><td>"+esc(x)+"</td></tr>").join("")}
  catch(e){document.getElementById("meta").textContent="Cannot reach Climatron"}}
+// Graph span menu; the board keeps history for every span, so switching only changes the view.
+// The choice is remembered in this browser
+const sp=document.getElementById("sp");let spanIdx=0;try{spanIdx=+localStorage.getItem("span")||0}catch(e){}
+function showSpans(spans){if(sp.options.length==spans.length){sp.value=spanIdx;return}
+ sp.innerHTML=spans.map((s,i)=>'<option value="'+i+'"'+(i==spanIdx?" selected":"")+'>'+spanName(s)+'</option>').join("")}
+sp.onchange=()=>{spanIdx=+sp.value;try{localStorage.setItem("span",spanIdx)}catch(e){};load()};
+// Show/hide the Device section, remembered in this browser
+const dev=document.getElementById("device"),devbtn=document.getElementById("devbtn");
+function showDevice(on){dev.style.display=on?"":"none";devbtn.textContent=on?"Hide device info":"Show device info";
+ try{localStorage.setItem("showDevice",on?"1":"0")}catch(e){}}
+let devOn=true;try{devOn=localStorage.getItem("showDevice")!=="0"}catch(e){}
+showDevice(devOn);devbtn.onclick=()=>showDevice(dev.style.display==="none");
 load();setInterval(load,15000);
 </script></body></html>)rawliteral";
 
   extern uint32_t webReadingsLastSampleMS;
 
-  String webReadingsHistory(Measure<kSampleCapacity>& measure)
-  // Retained samples, oldest first, as a JSON array
+  // Graph history, one set of arrays per graph span so switching spans on the page loses nothing.
+  // Each point averages the samples in one bucket; short spans keep every sample.
+  constexpr uint32_t kSpanS[] = {300, 3600, 43200, 86400};  // 5 min, 1 h, 12 h, 24 h
+  constexpr uint8_t  kSpanCount = sizeof(kSpanS) / sizeof(kSpanS[0]);
+  constexpr uint16_t kSpanMaxPoints = 30;
+  enum { H_CO2, H_PM25, H_VOC, H_NOX, H_TEMPF, H_HUMIDITY, H_COUNT };
+
+  struct webReadingsSpan {
+    uint16_t samplesPerPoint;           // samples averaged into each point
+    uint16_t points;                    // points that cover the span
+    uint16_t head = 0, stored = 0;      // ring buffer position and fill
+    float    value[H_COUNT][kSpanMaxPoints];
+    float    sum[H_COUNT] = {};         // point being accumulated
+    uint16_t sumCount = 0;
+  };
+  webReadingsSpan webReadingsSpans[kSpanCount];
+
+  void webReadingsSpansInit()
   {
-    String json = "[";
-    uint16_t stored = measure.getStored();
-    for (uint16_t i = kSampleCapacity - stored; i < kSampleCapacity; i++) {
-      if (i != kSampleCapacity - stored) json += ",";
-      json += String(measure.getMember(i), 1);
+    uint32_t sampleS = timeSensorSampleMS / 1000;
+    for (uint8_t s = 0; s < kSpanCount; s++) {
+      uint32_t perPoint = (kSpanS[s] + kSpanMaxPoints * sampleS - 1) / (kSpanMaxPoints * sampleS);  // round up
+      if (perPoint < 1) perPoint = 1;
+      webReadingsSpans[s].samplesPerPoint = perPoint;
+      webReadingsSpans[s].points = min<uint32_t>(kSpanS[s] / (perPoint * sampleS), kSpanMaxPoints);
     }
-    return json + "]";
   }
 
-  String webReadingsAQIHistory()
-  // US AQI for each retained PM2.5 sample, oldest first
+  void webReadingsRecordSample()
+  // Add the latest sensor sample to every span's history; call after each successful sensor read
+  {
+    if (!webReadingsSpans[0].samplesPerPoint) webReadingsSpansInit();
+    float sample[H_COUNT] = {totalCO2.getCurrent(), totalPM25.getCurrent(), totalVOCIndex.getCurrent(),
+                             totalNOxIndex.getCurrent(), totalTemperatureF.getCurrent(), totalHumidity.getCurrent()};
+    for (uint8_t s = 0; s < kSpanCount; s++) {
+      webReadingsSpan& span = webReadingsSpans[s];
+      for (uint8_t m = 0; m < H_COUNT; m++) span.sum[m] += sample[m];
+      if (++span.sumCount < span.samplesPerPoint) continue;
+      for (uint8_t m = 0; m < H_COUNT; m++) {
+        span.value[m][span.head] = span.sum[m] / span.sumCount;
+        span.sum[m] = 0;
+      }
+      span.sumCount = 0;
+      span.head = (span.head + 1) % span.points;
+      if (span.stored < span.points) span.stored++;
+    }
+  }
+
+  String webReadingsHistory(const webReadingsSpan& span, uint8_t m, bool aqi = false)
+  // Points for one measurement, oldest first, as a JSON array; the newest point
+  // may be a partial average so long spans show the latest reading right away
   {
     String json = "[";
-    uint16_t stored = totalPM25.getStored();
-    for (uint16_t i = kSampleCapacity - stored; i < kSampleCapacity; i++) {
-      if (i != kSampleCapacity - stored) json += ",";
-      json += String(pm25toAQI_US(totalPM25.getMember(i)), 0);
+    uint16_t first = (span.head + span.points - span.stored) % span.points;
+    for (uint16_t i = 0; i < span.stored; i++) {
+      if (i) json += ",";
+      float v = span.value[m][(first + i) % span.points];
+      json += aqi ? String(pm25toAQI_US(v), 0) : String(v, 1);
+    }
+    if (span.sumCount) {
+      float v = span.sum[m] / span.sumCount;
+      if (span.stored) json += ",";
+      json += aqi ? String(pm25toAQI_US(v), 0) : String(v, 1);
     }
     return json + "]";
   }
@@ -207,6 +272,12 @@ load();setInterval(load,15000);
 
   void webReadingsHandleData()
   {
+    // graph span chosen on the page, e.g. /data.json?span=2
+    if (!webReadingsSpans[0].samplesPerPoint) webReadingsSpansInit();
+    uint8_t spanIndex = webReadingsServer.arg("span").toInt();
+    if (spanIndex >= kSpanCount) spanIndex = 0;
+    const webReadingsSpan& span = webReadingsSpans[spanIndex];
+
     float pm25 = totalPM25.getCurrent();
     String json = "{";
     json += "\"deviceID\":\"" + endpointPath.deviceID + "\",";
@@ -225,7 +296,12 @@ load();setInterval(load,15000);
     json += "\"temperatureF\":" + String(totalTemperatureF.getCurrent(), 1) + ",";
     json += "\"humidity\":" + String(totalHumidity.getCurrent(), 1) + ",";
     json += "\"device\":" + webReadingsDevice() + ",";
-    json += "\"capacity\":" + String(kSampleCapacity) + ",";
+    json += "\"spans\":[";
+    for (uint8_t s = 0; s < kSpanCount; s++) json += (s ? "," : "") + String(kSpanS[s]);
+    json += "],";
+    json += "\"span\":" + String(spanIndex) + ",";
+    // room for a trailing partial point when points are averages
+    json += "\"capacity\":" + String(span.points + (span.samplesPerPoint > 1 ? 1 : 0)) + ",";
     // warning band limits from config.h so the page colors match the device
     json += "\"thresholds\":{";
     json += "\"co2\":[" + String(sensorCO2Fair) + "," + sensorCO2Poor + "," + sensorCO2Bad + "],";
@@ -236,13 +312,13 @@ load();setInterval(load,15000);
     json += "\"temperatureF\":[" + String(sensorTempFComfortMin) + "," + sensorTempFComfortMax + "],";
     json += "\"humidity\":[" + String(sensorHumidityComfortMin) + "," + sensorHumidityComfortMax + "]},";
     json += "\"history\":{";
-    json += "\"co2\":" + webReadingsHistory(totalCO2) + ",";
-    json += "\"pm25\":" + webReadingsHistory(totalPM25) + ",";
-    json += "\"aqi\":" + webReadingsAQIHistory() + ",";
-    json += "\"voc\":" + webReadingsHistory(totalVOCIndex) + ",";
-    json += "\"nox\":" + webReadingsHistory(totalNOxIndex) + ",";
-    json += "\"temperatureF\":" + webReadingsHistory(totalTemperatureF) + ",";
-    json += "\"humidity\":" + webReadingsHistory(totalHumidity);
+    json += "\"co2\":" + webReadingsHistory(span, H_CO2) + ",";
+    json += "\"pm25\":" + webReadingsHistory(span, H_PM25) + ",";
+    json += "\"aqi\":" + webReadingsHistory(span, H_PM25, true) + ",";
+    json += "\"voc\":" + webReadingsHistory(span, H_VOC) + ",";
+    json += "\"nox\":" + webReadingsHistory(span, H_NOX) + ",";
+    json += "\"temperatureF\":" + webReadingsHistory(span, H_TEMPF) + ",";
+    json += "\"humidity\":" + webReadingsHistory(span, H_HUMIDITY);
     json += "}}";
     webReadingsServer.sendHeader("Cache-Control", "no-store");
     webReadingsServer.send(200, "application/json", json);
