@@ -13,14 +13,15 @@
 // #define MQTT     // log sensor data to MQTT broker
 // #define HASSIO_MQTT  // Enables MQTT output to Home Assistant that has MQTT integration enabled
 // #define INFLUX // Log data to InfluxDB server
-// #define THINGSPEAK  // Log data to ThingSpeak
+#define THINGSPEAK  // Log data to ThingSpeak
+#define WEB_READINGS  // Serve current readings at http://climatron.local on the local network
 
 // Configuration Step 3: Set debug message mode
 // Modes
 // 0 = OFF
 // 1 = summary
 // 2 = verbose
-// #define DEBUG 2
+#define DEBUG 2
 
 // Configuration Step 4: Set hardware simulation mode
 // Modes
@@ -30,7 +31,7 @@
 // 3 = out of bounds values every time
 // 4 = rapid directional change > rapid-rise threshold for one characteristic
 // 5 = small, consistent directional change < rapid-rise threshold for one characteristic
-#define HARDWARE_SIMULATE 2
+#define HARDWARE_SIMULATE 0
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
@@ -76,6 +77,10 @@ constexpr uint16_t kWarningColor[4] = {
 // Internet and network endpoints
 constexpr uint8_t timeConnectTimeoutSeconds = 10; // how long WFM attempts network connect before failing
 constexpr uint32_t kTimeOWMRenewMS = 1800000; // minimal allowed time in ms between OWM calls
+// Readings web page (WEB_READINGS); the settings portal moves to webPortalPort when enabled
+constexpr char webReadingsHostname[] = "climatron";  // mDNS name, i.e. http://climatron.local
+constexpr uint16_t webReadingsPort = 80;
+constexpr uint16_t webPortalPort = 8080;
 constexpr uint32_t timeWebPortalTimeOutMS = 360000; // how long web configuration portal stays active
 
 constexpr uint32_t timeHardwareSleepTimeμS = 10000000;  // sleep time if hardware error occurs

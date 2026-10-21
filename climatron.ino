@@ -146,6 +146,12 @@ Measure<kSampleCapacity> totalTemperatureF, totalHumidity, totalCO2, totalVOCInd
 
 uint32_t timeLastReportMS = 0;  // timestamp for last report to network endpoints
 
+#ifdef WEB_READINGS
+  extern void webReadingsBegin();
+  extern void webReadingsHandle();
+  uint32_t webReadingsLastSampleMS = 0;  // timestamp of last successful sensor read, shown on web page
+#endif
+
 // alert management
 uint32_t alertStartMS = 0;
 uint32_t alertLengthMS = 0;
@@ -214,6 +220,10 @@ void setup() {
     // rssi is being simulated, and we don't need nvconfig prefs
     networkWiFiManagerOpen();
   #endif
+
+  #ifdef WEB_READINGS
+    webReadingsBegin();
+  #endif
 }
 
 void loop() {
@@ -241,6 +251,10 @@ void loop() {
       wfmPortalRunning = false;
     }
   }
+
+  #ifdef WEB_READINGS
+    webReadingsHandle();
+  #endif
 
   // is there user input to process?
   bool touchEvent = false;
@@ -289,6 +303,9 @@ void loop() {
     // Read sensor(s)
     if (sensorSEN6xRead()) {
       numSamples++;
+      #ifdef WEB_READINGS
+        webReadingsLastSampleMS = millis();
+      #endif
       // IMPROVEMENT: evaluate whether the screen actually needs updated based on changed data
       screenUpdate(screenCurrent);
       // evaluate the latest sample and handle alert cases
@@ -1047,7 +1064,16 @@ void networkStartWiFiMgrPortal()
     debugMessage("Cannot start WiFiManager Web Portal; WiFi not connected", 1);
     return;
   }
-  String alertMessage = "goto http://" + WiFi.localIP().toString() + " for device configuration";
+
+  #ifdef WEB_READINGS
+    // readings web page already owns port 80
+    wfm.setHttpPort(webPortalPort);
+    String portalAddress = WiFi.localIP().toString() + ":" + webPortalPort;
+  #else
+    String portalAddress = WiFi.localIP().toString();
+  #endif
+
+  String alertMessage = "goto http://" + portalAddress + " for device configuration";
   alertInitiate(5000, true, false, true, alertMessage);
 
   wfm.setTitle("Climatron Configurator");
