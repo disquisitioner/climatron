@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
+#include "ping/ping_sock.h"
 #include <Measure.hpp>
 
 #include "config.h"     // hardware and internet configuration parameters
@@ -22,6 +23,17 @@
 
   WebServer webReadingsServer(webReadingsPort);
   bool webReadingsRunning = false;
+
+  // WiFi link watchdog: the ESP32 can stay "connected" on a weak signal while passing no
+  // traffic, leaving the page unreachable until reset. Ping the gateway and reconnect if it stops answering.
+  constexpr uint32_t timeLinkCheckMS = 60000;     // how often to ping the gateway
+  constexpr uint8_t  linkFailureLimit = 3;        // consecutive failed checks before reconnecting
+  uint32_t webReadingsLastLinkCheckMS = 0;
+  uint8_t  webReadingsLinkFailures = 0;
+  bool     webReadingsGatewayAnswers = false;     // only judge the link once the gateway has answered a ping
+  volatile bool webReadingsPingDone = false;
+  volatile uint32_t webReadingsPingReplies = 0;
+  esp_ping_handle_t webReadingsPing = nullptr;
 
   // Single page; JavaScript polls /data.json and fills in the values
   const char webReadingsPage[] PROGMEM = R"rawliteral(<!DOCTYPE html>
@@ -241,6 +253,9 @@ load();setInterval(load,15000);
   {
     if (webReadingsRunning || WiFi.status() != WL_CONNECTED) return;
 
+    // Keep the radio awake so incoming page requests are answered promptly on a weak signal
+    WiFi.setSleep(false);
+
     if (MDNS.begin(webReadingsHostname)) {
       MDNS.addService("http", "tcp", webReadingsPort);
     }
@@ -259,11 +274,59 @@ load();setInterval(load,15000);
     debugMessage(String("Readings web page at http://") + webReadingsHostname + ".local or http://" + WiFi.localIP().toString(), 1);
   }
 
+  void webReadingsPingEnd(esp_ping_handle_t handle, void* args)
+  // Runs in the ping task when a gateway check finishes
+  {
+    uint32_t replies = 0;
+    esp_ping_get_profile(handle, ESP_PING_PROF_REPLY, &replies, sizeof(replies));
+    webReadingsPingReplies = replies;
+    webReadingsPingDone = true;
+  }
+
+  void webReadingsCheckLink()
+  // Start a gateway ping every timeLinkCheckMS and act on the previous result
+  {
+    if (webReadingsPingDone) {
+      webReadingsPingDone = false;
+      esp_ping_delete_session(webReadingsPing);
+      webReadingsPing = nullptr;
+      if (webReadingsPingReplies) {
+        webReadingsGatewayAnswers = true;
+        webReadingsLinkFailures = 0;
+      }
+      else if (webReadingsGatewayAnswers && ++webReadingsLinkFailures >= linkFailureLimit) {
+        debugMessage("webReadingsCheckLink(): gateway not answering, reconnecting WiFi", 1);
+        webReadingsLinkFailures = 0;
+        WiFi.disconnect();
+        WiFi.reconnect();
+        return;
+      }
+    }
+
+    if (webReadingsPing || WiFi.status() != WL_CONNECTED) return;
+    if (millis() - webReadingsLastLinkCheckMS < timeLinkCheckMS) return;
+    webReadingsLastLinkCheckMS = millis();
+
+    esp_ping_config_t config = ESP_PING_DEFAULT_CONFIG();
+    IPAddress gateway = WiFi.gatewayIP();
+    IP_ADDR4(&config.target_addr, gateway[0], gateway[1], gateway[2], gateway[3]);
+    config.count = 3;
+    esp_ping_callbacks_t callbacks = {};
+    callbacks.on_ping_end = webReadingsPingEnd;
+    if (esp_ping_new_session(&config, &callbacks, &webReadingsPing) == ESP_OK) {
+      esp_ping_start(webReadingsPing);
+    }
+    else {
+      webReadingsPing = nullptr;
+    }
+  }
+
   void webReadingsHandle()
   // Feed cycles to the readings web server; call from loop()
   {
     if (webReadingsRunning) {
       webReadingsServer.handleClient();
+      webReadingsCheckLink();
     }
     else {
       // WiFi may connect after setup(), e.g. following a reconnect
