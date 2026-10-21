@@ -151,6 +151,12 @@ Measure<kSampleCapacity> totalTemperatureF, totalHumidity, totalCO2, totalVOCInd
 
 uint32_t timeLastReportMS = 0;  // timestamp for last report to network endpoints
 
+#ifdef WEB_READINGS
+  extern void webReadingsBegin();
+  extern void webReadingsHandle();
+  uint32_t webReadingsLastSampleMS = 0;  // timestamp of last successful sensor read, shown on web page
+#endif
+
 // alert management
 uint32_t alertStartMS = 0;
 uint32_t alertLengthMS = 0;
@@ -216,6 +222,9 @@ void setup() {
     display.unloadFont();
   }
   networkWiFiManagerOpen();
+  #ifdef WEB_READINGS
+    webReadingsBegin();
+  #endif
   
   // reset the head leds
   pixels.fill(pixels.Color(0,0,0)); //black
@@ -258,6 +267,10 @@ void loop() {
       wfmPortalRunning = false;
     }
   }
+
+  #ifdef WEB_READINGS
+    webReadingsHandle();
+  #endif
 
   // is there user input to process?
   bool touchEvent = false;
@@ -306,6 +319,9 @@ void loop() {
     // Read sensor(s)
     if (sensorRead()) {
       numSamples++;
+      #ifdef WEB_READINGS
+        webReadingsLastSampleMS = millis();
+      #endif
       // IMPROVEMENT: evaluate whether the screen actually needs updated based on changed data
       screenUpdate(screenCurrent);
       if (sampleEvaluate()) {
@@ -1116,8 +1132,16 @@ void networkStartWiFiMgrPortal()
   pixels.fill(pixels.Color(0,0,255)); // blue
   pixels.show();
 
+  #ifdef WEB_READINGS
+    // readings web page already owns port 80
+    wfm.setHttpPort(webPortalPort);
+    String portalAddress = WiFi.localIP().toString() + ":" + webPortalPort;
+  #else
+    String portalAddress = WiFi.localIP().toString();
+  #endif
+
   display.loadFont(Roboto_Regular_24);
-  screenHelperAlert(String("goto http://") + WiFi.localIP().toString() + " for device configuration",TFT_WHITE,TFT_BLACK,TFT_BLUE);
+  screenHelperAlert(String("goto http://") + portalAddress + " for device configuration",TFT_WHITE,TFT_BLACK,TFT_BLUE);
   display.unloadFont();
 
   wfm.setTitle("Climatron Configurator");

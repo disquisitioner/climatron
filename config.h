@@ -12,6 +12,7 @@
 // #define HASSIO_MQTT  // And, if MQTT enabled, with Home Assistant too?
 #define INFLUX // Log data to InfluxDB server
 #define THINGSPEAK  // Log data to ThingSpeak
+#define WEB_READINGS  // Serve current readings at http://climatron.local on the local network
 
 // Configuration Step 3: Device parameters and hardware-related configuration
 
@@ -40,7 +41,7 @@ constexpr uint8_t  audioResolution = 8;    // bit
 
 // Configuration Step 5: Simulate WiFi and sensor hardware, returning random but plausible values.
 // Comment out to turn off
-// #define HARDWARE_SIMULATE
+//#define HARDWARE_SIMULATE
 
 // Configuration variables that are less likely to require changes
 
@@ -79,6 +80,10 @@ constexpr uint16_t warningColor[4] = {
 // Internet and network endpoints
 constexpr uint8_t timeConnectTimeoutSeconds = 10; // how long WFM attempts network connect before failing
 constexpr uint32_t timeOWMRenewMS = 1800000; // min time between OWM calls
+// Readings web page (WEB_READINGS); the settings portal moves to webPortalPort when enabled
+constexpr char webReadingsHostname[] = "climatron";  // mDNS name, i.e. http://climatron.local
+constexpr uint16_t webReadingsPort = 80;
+constexpr uint16_t webPortalPort = 8080;
 constexpr uint32_t timeWebPortalTimeOutMS = 360000; // how long web configuration portal stays active
 
 constexpr uint32_t timeHardwareSleepTimeμS = 10000000;  // sleep time if hardware error occurs
