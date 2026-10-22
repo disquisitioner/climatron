@@ -154,6 +154,7 @@ uint32_t timeLastReportMS = 0;  // timestamp for last report to network endpoint
 #ifdef WEB_READINGS
   extern void webReadingsBegin();
   extern void webReadingsHandle();
+  extern void webReadingsRecordSample();
   uint32_t webReadingsLastSampleMS = 0;  // timestamp of last successful sensor read, shown on web page
 #endif
 
@@ -321,6 +322,7 @@ void loop() {
       numSamples++;
       #ifdef WEB_READINGS
         webReadingsLastSampleMS = millis();
+        webReadingsRecordSample();  // add to the web page graph history
       #endif
       // IMPROVEMENT: evaluate whether the screen actually needs updated based on changed data
       screenUpdate(screenCurrent);
