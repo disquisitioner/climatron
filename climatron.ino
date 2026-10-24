@@ -160,10 +160,6 @@ void setup() {
     // wait for serial port connection
     while (!Serial);
     // Display key configuration parameters
-    debugMessage(String("Starting Climatron with ") + (kTimeSensorSampleMS/1000) + String(" second sample interval"),1);
-    #if defined(MQTT) || defined(INFLUX) || defined(HASSIO_MQTT) || defined(THINGSPEAK)
-      debugMessage(String("Report interval is ") + (timeReportMS/60000) + " minutes",1);
-    #endif
   #endif
 
   // generate truely random numbers
@@ -214,6 +210,12 @@ void setup() {
     // rssi is being simulated, and we don't need nvconfig prefs
     networkWiFiManagerOpen();
   #endif
+
+  debugMessage(kTimeSensorSampleMS/1000 + String(" second sample interval"),1);
+  #if defined(MQTT) || defined(INFLUX) || defined(HASSIO_MQTT) || defined(THINGSPEAK)
+    debugMessage(timeReportMS/60000 + "minute endpoint write interval",1);
+  #endif
+ 
 }
 
 void loop() {
@@ -1124,35 +1126,39 @@ bool nvconfigRead() {
     if (nvConfig.isKey("altitude")) {
       // config data exists
       hardwareData.altitude = nvConfig.getUShort("altitude");
-      debugMessage(String("Altitude from nvconfig is ") + hardwareData.altitude + " meters",2);
+      debugMessage(String("Altitude from nvconfig: ") + hardwareData.altitude + " meters",2);
       hardwareData.latitude = nvConfig.getFloat("latitude");
-      debugMessage(String("Latitude from nvconfig is ") + hardwareData.latitude,2);
+      debugMessage(String("Latitude from nvconfig: ") + hardwareData.latitude,2);
       hardwareData.longitude = nvConfig.getFloat("longitude");
-      debugMessage(String("Longitude from nvconfig is ") + hardwareData.longitude,2);
+      debugMessage(String("Longitude from nvconfig: ") + hardwareData.longitude,2);
       // generate default unique device identifier based on ESP32 MAC address and hardware device type specified in config.h.
       endpointPath.deviceID = nvConfig.getString("deviceID");
-      debugMessage(String("Device ID from nvconfig is ") + endpointPath.deviceID,1);
+      debugMessage(String("Device ID from nvconfig: ") + endpointPath.deviceID,1);
 
+      // Device location IRL 
       endpointPath.site = nvConfig.getString("site");
-      debugMessage(String("Device site from nvconfig is ") + endpointPath.site,2);
       endpointPath.location = nvConfig.getString("location");
-      debugMessage(String("Device location from nvconfig is ") + endpointPath.location,2);
       endpointPath.room = nvConfig.getString("room", kDefaultRoom);
-      debugMessage(String("Device room from nvconfig is ") + endpointPath.room,2);
+      debugMessage(String("Device site/location/room from nvconfig: ") 
+        + endpointPath.site + "/" + endpointPath.location + "/"
+        + endpointPath.room,2);
 
+      // MQTT broker information
       mqttBrokerConfig.host = nvConfig.getString("mqttHost");
-      debugMessage(String("MQTT broker address from nvconfig is ") + mqttBrokerConfig.host,2);
       mqttBrokerConfig.port = nvConfig.getUShort("mqttPort");
-      debugMessage(String("MQTT broker port from nvconfig is ") + mqttBrokerConfig.port,2);
+      debugMessage(String("MQTT broker host:port from nvconfig: ")
+       + mqttBrokerConfig.host + ":" + mqttBrokerConfig.port,2);      
+
       mqttBrokerConfig.user = nvConfig.getString("mqttUser");
       debugMessage(String("MQTT username from nvconfig is ") + mqttBrokerConfig.user,2);
       mqttBrokerConfig.password = nvConfig.getString("mqttPassword");
       debugMessage(String("MQTT user password from nvconfig is ") + mqttBrokerConfig.password,2);
 
       influxdbConfig.host = nvConfig.getString("influxHost");
-      debugMessage(String("influxdb server address from nvconfig is ") + influxdbConfig.host,2);
       influxdbConfig.port = nvConfig.getUShort("influxPort");
-      debugMessage(String("influxdb server port from nvconfig is ") + influxdbConfig.port,2);
+      debugMessage(String("Influxdb host:port from nvconfig: ")
+       + influxdbConfig.host + ":" + influxdbConfig.port,2);   
+
       influxdbConfig.org = nvConfig.getString("influxOrg");
       debugMessage(String("influxdb org from nvconfig is ") + influxdbConfig.org,2);
       influxdbConfig.bucket = nvConfig.getString("influxBucket");

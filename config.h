@@ -20,7 +20,7 @@
 // 0 = OFF
 // 1 = summary
 // 2 = verbose
-// #define DEBUG 2
+#define DEBUG 0
 
 // Configuration Step 4: Set hardware simulation mode
 // Modes
@@ -30,7 +30,7 @@
 // 3 = out of bounds values every time
 // 4 = rapid directional change > rapid-rise threshold for one characteristic
 // 5 = small, consistent directional change < rapid-rise threshold for one characteristic
-#define HARDWARE_SIMULATE 2
+#define HARDWARE_SIMULATE 0
 constexpr uint8_t kSimulationCycles = 10;
 
 //////////////////////////////////////
