@@ -10,10 +10,10 @@
 // Configuration Step 1: Create and/or configure secrets.h. Use secrets_template.h as guide to create secrets.h
 
 // Configuration Step 2: Set network data endpoints
-// #define MQTT     // log sensor data to MQTT broker
+// #define MQTT   t  // log sensor data to MQTT broker
 // #define HASSIO_MQTT  // Enables MQTT output to Home Assistant that has MQTT integration enabled
-// #define INFLUX // Log data to InfluxDB server
-// #define THINGSPEAK  // Log data to ThingSpeak
+#define INFLUX // Log data to InfluxDB server
+#define THINGSPEAK  // Log data to ThingSpeak
 
 // Configuration Step 3: Set debug message mode
 // Modes

@@ -1,5 +1,5 @@
 # Analyze Arduino / ESP32 linker map file to show allocated memory usage by library.
-# Usage: .\analyze_map_improved.ps1 [-MapFile c:\arduinobuild\output.map] [-Top 0] [-Csv out.csv]
+# Usage: .\analyze_memory_map.ps1 [-MapFile C:\arduinobuild\climatron\output.map] [-Top 0] [-Csv out.csv]
 #
 # Notes:
 # - This parses the real "Linker script and memory map" section, not the earlier
@@ -11,13 +11,21 @@
 # - Debug/non-runtime map sections are ignored by default; pass -IncludeOther to inspect them.
 
 param(
-    [string]$MapFile = "c:\arduinobuild\output.map",
+    [string]$MapFile = "",
     [int]$Top = 0,
     [string]$Csv = "",
     [switch]$IncludeOther
 )
 
-if (!(Test-Path $MapFile)) {
+# Match the build scripts: use the sketch folder above this scripts directory.
+if (-not $PSBoundParameters.ContainsKey('MapFile')) {
+    $sketchPath = Split-Path -Path $PSScriptRoot -Parent
+    $sketchName = Split-Path -Path $sketchPath -Leaf
+    $buildDirectory = Join-Path 'C:\arduinobuild' $sketchName
+    $MapFile = Join-Path $buildDirectory 'output.map'
+}
+
+if (!(Test-Path -LiteralPath $MapFile -PathType Leaf)) {
     Write-Host "Map file not found: $MapFile" -ForegroundColor Red
     exit 1
 }
@@ -147,7 +155,7 @@ $oneLineInputPattern = '^\s+([.]\S+)\s+0x[0-9a-fA-F]+\s+(0x[0-9a-fA-F]+)\s+(.+(?
 $continuedInputPattern = '^\s+0x[0-9a-fA-F]+\s+(0x[0-9a-fA-F]+)\s+(.+(?:\.o|\.obj)(?:\))?)\s*$'
 $inputSectionOnlyPattern = '^\s+([.]\S+)\s*$'
 
-Get-Content $MapFile | ForEach-Object {
+Get-Content -LiteralPath $MapFile | ForEach-Object {
     $line = $_
 
     if (-not $inMemoryMap) {

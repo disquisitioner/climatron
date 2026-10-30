@@ -10,6 +10,7 @@
 #include "secrets.h"    // private configuration data not stored in github
 #include "data.h"       // data pair configuration
 
+#include "esp_app_desc.h"
 #include <HTTPClient.h>           // used to access Open Weather Map
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager
 #include <Measure.hpp>            // https://github.com/disquisitioner/Measure, utility class for collecting, processing, and reporting periodic data
@@ -159,7 +160,11 @@ void setup() {
     Serial.begin(115200);
     // wait for serial port connection
     while (!Serial);
-    // Display key configuration parameters
+    const esp_app_desc_t* app = esp_app_get_description();
+
+    Serial.printf("Version: %s\n", app->version);
+    Serial.printf("Project: %s\n", app->project_name);
+    Serial.printf("Built: %s %s\n", app->date, app->time);
   #endif
 
   // generate truely random numbers

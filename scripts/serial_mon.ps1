@@ -7,11 +7,12 @@ do {
 } while (-not ($portNumber -match '^\d+$'))
 
 $selectedPortName = "COM$portNumber"
-# Logs are saved in the current working folder's logs subfolder using dd-mm-yy+hh-mm ordering.
+# Logs are saved under the sketch root, independent of the current working directory.
 
 $port = $null
 $logWriter = $null
-$logDirectory = Join-Path (Get-Location).Path 'logs'
+$sketchPath = Split-Path -Path $PSScriptRoot -Parent
+$logDirectory = Join-Path $sketchPath 'logs'
 $logPath = Join-Path $logDirectory ('climatron_{0}.txt' -f (Get-Date -Format 'dd-MM-yy+HH-mm'))
 
 try {
