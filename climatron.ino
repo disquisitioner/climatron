@@ -102,7 +102,10 @@ extern void screenNOX();
 extern void screenCO2();
 extern void screenPM25();
 extern void screenForecast();
+extern void screenInitialize();
+extern void screenQRCodeAlert();
 extern void screenHelperAlert( const String &messageText, uint16_t fgColor, uint16_t bgColor, uint16_t borderColor);
+extern void screenHelperQRCode(uint16_t originX, uint16_t originY, String url);
 
 // CYD JC2432W328 -> CST820 capacitive touchscreen
 CST820 touchscreen(pinTouchSDA, pinTouchSCL, pinTouchRST, pinTouchIRQ);
@@ -161,10 +164,7 @@ void setup() {
     // wait for serial port connection
     while (!Serial);
     const esp_app_desc_t* app = esp_app_get_description();
-
-    Serial.printf("Version: %s\n", app->version);
-    Serial.printf("Project: %s\n", app->project_name);
-    Serial.printf("Built: %s %s\n", app->date, app->time);
+    debugMessage(String("Climatron version ") + app->version + ", built " + app->date,1);
   #endif
 
   // generate truely random numbers
@@ -175,7 +175,6 @@ void setup() {
   display.begin();
   display.setRotation(screenRotation);
   display.setTextWrap(false);
-  display.fillScreen(TFT_BLACK);
   // set screen backlight
   ledcAttach(TFT_BL, 5000, 8); // 5000 = pwm frequency, 8 = bit resolution
   ledcWrite(TFT_BL, screenBLMax);
@@ -183,9 +182,6 @@ void setup() {
   // set head leds to blue to indicate configuration state
   pixels.fill(pixels.Color(0,0,255)); // blue
   pixels.show();
-  display.loadFont(Roboto_Regular_36);
-  screenHelperAlert("Initializing",TFT_WHITE,TFT_BLACK,TFT_BLUE);
-  display.unloadFont();
 
   TouchWire.begin(pinTouchSDA, pinTouchSCL);
   SensorWire.begin(pinSensorSDA, pinSensorSCL);
@@ -202,14 +198,15 @@ void setup() {
     // no configuration parameters in non-volatile storage, so write defaults
     nvconfigDefaultsLoad();
     nvconfigWrite();
-  }   
+  }
+
+  screenInitialize();
 
   // initialize sensor(s)
   if( !sensorSEN6xInit()) {
     // error often occurs after firmware flash/reset
     display.loadFont(Roboto_Regular_24);
     deviceReboot("Sensor failure, rebooting", 5000);
-    display.unloadFont();
   }
   #if !HARDWARE_SIMULATE
     // rssi is being simulated, and we don't need nvconfig prefs
@@ -933,12 +930,26 @@ void networkWiFiMgrSaveParamsCallback() {
 void networkWiFiMgrAPCallback(WiFiManager *myWiFiManager) {
   debugMessage(String("networkWiFiMgrAPCallback() start"),1);
   // This alert is intentionally a UI blocker, handled by WiFiManager, not alertHandle()
-  display.fillScreen(TFT_BLACK);
-  display.loadFont(Roboto_Regular_18);
-  screenHelperAlert(String("Setup device at http://") + WiFi.softAPIP().toString(),TFT_WHITE,TFT_BLACK,TFT_BLUE);
-  display.unloadFont();
+  screenQRCodeAlert();
   debugMessage(String("Did not connect to (stored) AP, WiFiManager web config portal should start"),1);
   debugMessage(String("networkWiFiMgrAPCallback() end"),1);
+
+//     wl_status_t status =
+//         (wl_status_t)wm->getLastConxResult();
+
+//     switch (status) {
+//         case WL_NO_SSID_AVAIL:
+//             debugMessage("WiFi SSID unavailable", 1);
+//             break;
+
+//         case WL_CONNECT_FAILED:
+//             debugMessage("WiFi connection failed", 1);
+//             break;
+
+//         default:
+//             debugMessage("WiFi status: " + String(status), 1);
+//             break;
+//     }
 }
 
 bool networkWiFiManagerOpen()

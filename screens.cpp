@@ -4,10 +4,13 @@
 */
 
 #include <Arduino.h>
+#include <WiFi.h>
+#include "esp_app_desc.h"
 #include <Measure.hpp>
 #include "config.h"
 #include "climatron.h"
 #include <TFT_eSPI.h> // https://github.com/Bodmer/TFT_eSPI
+#include "qrcoderm.h" // https://github.com/ricmoo/qrcode/, QR code support
 
 // https://fonts.google.com/specimen/Roboto
 #include "ui/fonts/Roboto_Regular_12.h"
@@ -41,6 +44,7 @@ extern uint8_t noxRange(float);
 // Forward declarations for local functions to help make ordering in this file easier
 void screenHelperGraph(uint16_t, uint16_t, uint16_t, uint16_t, Measure<kSampleCapacity>, uint8_t, String);
 void screenHelperHeaderBar(uint16_t, uint16_t, String header);
+void screenHelperAlert(const String &messageText, uint16_t fgColor, uint16_t bgColor, uint16_t borderColor);
 String getWarningLabel(uint8_t, float);
 void screenHelperWiFiStatus(uint16_t, uint16_t, uint16_t);
 void screenHelperPostStatus(uint16_t, uint16_t, uint16_t, uint16_t);
@@ -405,6 +409,62 @@ void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t foregroundColor, ui
   debugMessage(String("screenHelperPostStatus() end"), 1);   
 }
 
+void screenHelperQRCode(uint16_t originX, uint16_t originY, String url)
+{
+  debugMessage("screenHelperQRCode() begin", 1);
+
+  QRCode qrcode;
+
+  uint8_t qrcodeData[qrcode_getBufferSize(kQRCodeVersion)];
+  qrcode_initText(&qrcode, qrcodeData, kQRCodeVersion, ECC_LOW, url.c_str());
+
+  uint16_t qrSize = qrcode.size * kQRCodeScaling;
+
+  display.startWrite();
+
+  // Clear QR code area to white
+  display.fillRect(originX, originY, qrSize, qrSize, TFT_WHITE);
+
+  // Draw black QR code modules
+  for (uint8_t y = 0; y < qrcode.size; y++)
+  {
+    for (uint8_t x = 0; x < qrcode.size; x++)
+    {
+      if (qrcode_getModule(&qrcode, x, y))
+      {
+        display.fillRect(
+          originX + x * kQRCodeScaling,
+          originY + y * kQRCodeScaling,
+          kQRCodeScaling,
+          kQRCodeScaling,
+          TFT_BLACK
+        );
+      }
+    }
+  }
+
+  display.endWrite();
+
+  debugMessage("screenHelperQRCode() end", 1);
+}
+
+void screenQRCodeAlert()
+{
+  debugMessage("screenQRCodeAlert() begin", 1);
+  constexpr uint16_t messageX = 200;
+
+  display.fillScreen(TFT_BLACK);
+  String screenURL = "https://" + WiFi.softAPIP().toString();
+  screenHelperQRCode(display.width()/2, display.height(),screenURL);
+
+  display.loadFont(Roboto_Regular_18);
+  display.setTextColor(TFT_WHITE, TFT_BLACK, true);
+  display.setTextDatum(MC_DATUM);
+  display.drawString("QR code takes you to device portal",messageX,display.height()/2);
+  display.unloadFont();
+  debugMessage("screenQRCodeAlert() end", 1);
+}
+
 void screenHelperGraph(uint16_t initialX, uint16_t initialY, uint16_t width, uint16_t height, Measure<kSampleCapacity> measure, uint8_t datatype, String xLabel)
 {
   uint8_t stored, capacity;
@@ -524,6 +584,34 @@ void screenHelperGraph(uint16_t initialX, uint16_t initialY, uint16_t width, uin
     yp = y;
   }
   debugMessage("screenHelperGraph() end",1);
+}
+
+void screenInitialize() {
+  debugMessage("screenInitialize() begin",1);
+
+  uint16_t messageDebugX = display.width() / 2;
+  constexpr uint16_t messageDebugY = 180;
+
+  display.fillScreen(TFT_BLACK);
+
+  display.loadFont(Roboto_Regular_36);
+  screenHelperAlert("Initializing",TFT_WHITE,TFT_BLACK,TFT_BLUE);
+  display.unloadFont();
+
+  #if DEBUG
+    display.loadFont(Roboto_Regular_12);
+    display.setTextDatum(MC_DATUM);
+    display.setTextColor(TFT_WHITE, TFT_BLACK, true);
+
+    display.drawString(endpointPath.deviceID,messageDebugX,messageDebugY);
+    String messageText = String("MAC address: ") + String(ESP.getEfuseMac(), HEX);
+    display.drawString(messageText,messageDebugX,messageDebugY+20);
+    const esp_app_desc_t* app = esp_app_get_description();
+    messageText = String("Climatron version ") + app->version + ", built " + app->date;
+    display.drawString(messageText, messageDebugX, messageDebugY+40);
+    display.unloadFont();
+  #endif
+  debugMessage("screenInitialize() end",1);
 }
 
 // Determine the right warning label to use for an arbitrary sensor data value given
@@ -689,21 +777,19 @@ void textSplitTwoLines(
 }
 
 /**
- * @brief Draw a centered rounded-rectangle "bubble" containing a one- or two-line message.
+ * @brief Draw a centered, rounded rectangle containing a one or two line message.
  *
  * The message is split using pixel width measurements and word boundaries. If the message
  * is too long, truncation is applied at the end of the overall message (ellipsis on line 2
  * only, or on line 1 if it must be single-line). The rounded rectangle and text are constrained
  * to stay within the display and within a horizontal safe region defined by @p kXMargins.
  *
- * Vertical centering behavior:
- * - If two lines are drawn, the vertical gap between the lines is centered on the screen.
- * - If one line is drawn, the text itself is centered on the screen.
+ * The rectangle is centered vertically, with text positioned padY pixels below its top edge.
  *
- * @param messageText Message to render inside the bubble.
+ * @param messageText Message to render inside the rounded rectangle.
  * @param fgColor   Text color.
- * @param bgColor   Bubble fill color (also used as text background color).
- * @param borderColor Bubble outline color.
+ * @param bgColor   Rounded rectangle fill color (also used as text background color).
+ * @param borderColor Rounded rectangle outline color.
  * @param kXMargins    Horizontal safe margin in pixels applied to both left and right edges.
  *
  * @note Set the desired font and text size on @p display before calling this function.
@@ -715,63 +801,44 @@ void screenHelperAlert( const String &messageText, uint16_t fgColor, uint16_t bg
   display.setTextColor(fgColor, bgColor, true);
   display.setTextPadding(0);
 
-  const int16_t screenW = (int16_t)display.width();
-  const int16_t screenH = (int16_t)display.height();
-  const int16_t centerY = screenH / 2;
+  const uint16_t screenW = display.width();
+  const uint16_t screenH = display.height();
 
-  const int16_t safeLeft  = (int16_t)kXMargins;
-  const int16_t safeRight = (int16_t)(screenW - 1 - (int16_t)kXMargins);
-  const int16_t safeW     = safeRight - safeLeft + 1;
+  const int16_t safeLeft  = kXMargins;
+  const int16_t safeW = screenW - (2 * kXMargins);
   if (safeW <= 0) return;
 
-  const uint16_t lineHeight = (uint16_t)display.fontHeight();
+  const uint8_t lineHeight = display.fontHeight();
 
-  uint8_t lineSpacing = (uint8_t)(lineHeight / 4);
+  uint8_t lineSpacing = lineHeight / 4;
   if (lineSpacing < 2)  lineSpacing = 2;
   if (lineSpacing > 10) lineSpacing = 10;
 
-  uint8_t padX = (uint8_t)(lineHeight / 3);
-  uint8_t padY = (uint8_t)(lineHeight / 4);
-  if (padX < 6) padX = 6;
-  if (padY < 4) padY = 4;
+  const uint8_t padX = max(6, display.textWidth("M") / 2);
+  const uint8_t padY = max(4, lineHeight / 4);
 
-  uint8_t radius = (uint8_t)(lineHeight / 3);
-  if (radius < 6)  radius = 6;
-  if (radius > 18) radius = 18;
+  uint8_t rectRadius = constrain((lineHeight / 3), 6, 18);
 
-  const int16_t innerW_signed = safeW - (int16_t)(2 * padX);
-  const uint16_t innerW = (innerW_signed > 0) ? (uint16_t)innerW_signed : 0;
-  if (innerW == 0) return;
+  const uint16_t maxWidthPixels = safeW - 2 * padX;
 
   String line1, line2;
-  textSplitTwoLines(messageText, line1, line2, innerW);
+  textSplitTwoLines(messageText, line1, line2, maxWidthPixels);
 
   const bool twoLines = (line2.length() > 0);
 
-  const int16_t w1 = (int16_t)display.textWidth(line1);
-  const int16_t w2 = twoLines ? (int16_t)display.textWidth(line2) : 0;
-  const int16_t textW = (w2 > w1) ? w2 : w1;
+  const uint16_t w1 = display.textWidth(line1);
+  const uint16_t w2 = twoLines ? display.textWidth(line2) : 0;
+  const uint16_t textW = max(w1, w2);
 
-  const int16_t textH = twoLines
-    ? (int16_t)(2 * (int16_t)lineHeight + (int16_t)lineSpacing)
-    : (int16_t)lineHeight;
+  const uint16_t textH = twoLines
+    ? (2 * lineHeight + lineSpacing)
+    : lineHeight;
 
-  int16_t rectW = textW + (int16_t)padX * 2;
-  int16_t rectH = textH + (int16_t)padY * 2;
-
-  if (rectW > safeW)   rectW = safeW;
-  if (rectH > screenH) rectH = screenH;
-
-  int16_t yTextTop;
-  if (!twoLines) {
-    yTextTop = centerY - (textH / 2);
-  } else {
-    const int16_t halfGapTop = (int16_t)(lineSpacing / 2);
-    yTextTop = centerY - halfGapTop - (int16_t)lineHeight;
-  }
+  uint16_t rectW = textW + padX * 2;
+  uint16_t rectH = textH + padY * 2;
 
   int16_t rectX = safeLeft + (safeW - rectW) / 2;
-  int16_t rectY = yTextTop - (int16_t)padY;
+  int16_t rectY = (screenH - rectH) / 2;
 
   const int16_t maxRectX = safeLeft + safeW - rectW;
   if (rectX < safeLeft) rectX = safeLeft;
@@ -782,16 +849,16 @@ void screenHelperAlert( const String &messageText, uint16_t fgColor, uint16_t bg
 
   const int16_t rectCenterX = rectX + rectW / 2;
 
-  display.fillRoundRect(rectX, rectY, rectW, rectH, radius, bgColor);
-  display.drawRoundRect(rectX, rectY, rectW, rectH, radius, borderColor);
+  display.fillRoundRect(rectX, rectY, rectW, rectH, rectRadius, bgColor);
+  display.drawRoundRect(rectX, rectY, rectW, rectH, rectRadius, borderColor);
 
   display.setTextDatum(TC_DATUM);
-  const int16_t textTopY = rectY + (int16_t)padY;
+  const int16_t textTopY = rectY + padY;
 
   display.drawString(line1, rectCenterX, textTopY);
   if (twoLines) {
     display.drawString(line2, rectCenterX,
-                   textTopY + (int16_t)lineHeight + (int16_t)lineSpacing);
+                   textTopY + lineHeight + lineSpacing);
   }
 
   debugMessage(String("screenHelperAlert end()"), 1);

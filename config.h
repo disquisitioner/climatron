@@ -10,9 +10,9 @@
 // Configuration Step 1: Create and/or configure secrets.h. Use secrets_template.h as guide to create secrets.h
 
 // Configuration Step 2: Set network data endpoints
-// #define MQTT   t  // log sensor data to MQTT broker
+// #define MQTT     // log sensor data to MQTT broker
 // #define HASSIO_MQTT  // Enables MQTT output to Home Assistant that has MQTT integration enabled
-#define INFLUX // Log data to InfluxDB server
+// #define INFLUX // Log data to InfluxDB server
 #define THINGSPEAK  // Log data to ThingSpeak
 
 // Configuration Step 3: Set debug message mode
@@ -20,7 +20,7 @@
 // 0 = OFF
 // 1 = summary
 // 2 = verbose
-#define DEBUG 0
+#define DEBUG 1
 
 // Configuration Step 4: Set hardware simulation mode
 // Modes
@@ -61,6 +61,10 @@ constexpr uint8_t screenRotation = 3; // CYD 2.8; horizontal orientation with US
 // brightness maximum and minimum levels (0-255)
 constexpr uint8_t screenBLMax = 255;
 constexpr uint8_t screenBLLow  = 52;   // 255 * 0.20
+
+// QR Code information for screen display
+constexpr uint8_t kQRCodeScaling = 3; // each QR code module (black or white square) occupies kQRCodeScaling x kQRCodeScaling pixels
+constexpr uint8_t kQRCodeVersion = 4; // range 1-6; determines modules per side using modules per side = 4 x kQRCodeVersion + 17
 
 // warnings
 const String kWarningLabel[4]={"Good", "Fair", "Poor", "Bad"};
