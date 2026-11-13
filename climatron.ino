@@ -105,7 +105,6 @@ extern void screenForecast();
 extern void screenInitialize();
 extern void screenQRCodeAlert();
 extern void screenHelperAlert( const String &messageText, uint16_t fgColor, uint16_t bgColor, uint16_t borderColor);
-extern void screenHelperQRCode(uint16_t originX, uint16_t originY, String url);
 
 // CYD JC2432W328 -> CST820 capacitive touchscreen
 CST820 touchscreen(pinTouchSDA, pinTouchSCL, pinTouchRST, pinTouchIRQ);

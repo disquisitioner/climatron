@@ -63,8 +63,8 @@ constexpr uint8_t screenBLMax = 255;
 constexpr uint8_t screenBLLow  = 52;   // 255 * 0.20
 
 // QR Code information for screen display
-constexpr uint8_t kQRCodeScaling = 3; // each QR code module (black or white square) occupies kQRCodeScaling x kQRCodeScaling pixels
-constexpr uint8_t kQRCodeVersion = 4; // range 1-6; determines modules per side using modules per side = 4 x kQRCodeVersion + 17
+constexpr uint8_t kQRCodeScaling = 4; // each QR code module (black or white square) occupies kQRCodeScaling x kQRCodeScaling pixels
+constexpr uint8_t kQRCodeVersion = 4; // maximum QR version; version 4 is 33 modules per side
 
 // warnings
 const String kWarningLabel[4]={"Good", "Fair", "Poor", "Bad"};

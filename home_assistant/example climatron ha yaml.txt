@@ -1,0 +1,89 @@
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# Configuration for Climatron-ace8 integration with Home Assistant
+mqtt:
+  sensor:
+    - name: "Temperature"
+      device_class: "temperature"
+      unit_of_measurement: "°F"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unique_id: "Climatron-ace8-temperature"
+      value_template: "{{ value_json.temperatureF }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"
+    - name: "Humidity"
+      device_class: "humidity"
+      unit_of_measurement: "%"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unique_id: "Climatron-ace8-humidity"
+      value_template: "{{ value_json.humidity }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"
+    - name: "CO2"
+      device_class: "carbon_dioxide"
+      unit_of_measurement: "ppm"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unique_id: "Climatron-ace8-co2"
+      value_template: "{{ value_json.co2 }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"
+    - name: "PM2.5"
+      device_class: "pm25"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unit_of_measurement: "µg/m³"
+      unique_id: "Climatron-ace8-pm25"
+      value_template: "{{ value_json.pm25 }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"
+    - name: "AQI"
+      device_class: "aqi"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unique_id: "Climatron-ace8-aqi"
+      value_template: "{{ value_json.aqi }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"
+    - name: "VOCIndex"
+      device_class: "aqi"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unique_id: "Climatron-ace8-vocIndex"
+      value_template: "{{ value_json.vocIndex }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"
+    - name: "NOxIndex"
+      device_class: "aqi"
+      state_topic: "homeassistant/demo/demo/demo/Climatron-ace8/state"
+      unique_id: "Climatron-ace8-noxIndex"
+      value_template: "{{ value_json.noxIndex }}"
+      state_class: "measurement"
+      device:
+        name: "Climatron (Climatron-ace8)"
+        identifiers:
+          - "Climatron-ace8"

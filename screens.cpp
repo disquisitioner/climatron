@@ -5,12 +5,13 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include "esp_app_desc.h"
+#include <esp_app_desc.h>
+#include <qrcode.h> // Espressif QR encoder bundled with Arduino-ESP32
+#include <TFT_eSPI.h> // https://github.com/Bodmer/TFT_eSPI
+#include <qrcode.h> // Espressif QR encoder bundled with Arduino-ESP32
 #include <Measure.hpp>
 #include "config.h"
 #include "climatron.h"
-#include <TFT_eSPI.h> // https://github.com/Bodmer/TFT_eSPI
-#include "qrcoderm.h" // https://github.com/ricmoo/qrcode/, QR code support
 
 // https://fonts.google.com/specimen/Roboto
 #include "ui/fonts/Roboto_Regular_12.h"
@@ -409,16 +410,17 @@ void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t foregroundColor, ui
   debugMessage(String("screenHelperPostStatus() end"), 1);   
 }
 
-void screenHelperQRCode(uint16_t originX, uint16_t originY, String url)
+static void screenHelperQRCode(esp_qrcode_handle_t qrcode)
 {
-  debugMessage("screenHelperQRCode() begin", 1);
-
-  QRCode qrcode;
-
-  uint8_t qrcodeData[qrcode_getBufferSize(kQRCodeVersion)];
-  qrcode_initText(&qrcode, qrcodeData, kQRCodeVersion, ECC_LOW, url.c_str());
-
-  uint16_t qrSize = qrcode.size * kQRCodeScaling;
+  constexpr int quietZone = 4;
+  const int moduleCount = esp_qrcode_get_size(qrcode);
+  const int qrSize = (moduleCount + 2 * quietZone) * kQRCodeScaling;
+  const int originX = (display.width() - qrSize) / 2;
+  const int messageY = display.height() * 5 / 6;
+  const int messageTop = messageY - display.fontHeight() / 2;
+  const int originY = (messageTop - qrSize) / 2;
+  const int firstModuleX = originX + quietZone * kQRCodeScaling;
+  const int firstModuleY = originY + quietZone * kQRCodeScaling;
 
   display.startWrite();
 
@@ -426,15 +428,15 @@ void screenHelperQRCode(uint16_t originX, uint16_t originY, String url)
   display.fillRect(originX, originY, qrSize, qrSize, TFT_WHITE);
 
   // Draw black QR code modules
-  for (uint8_t y = 0; y < qrcode.size; y++)
+  for (int y = 0; y < moduleCount; y++)
   {
-    for (uint8_t x = 0; x < qrcode.size; x++)
+    for (int x = 0; x < moduleCount; x++)
     {
-      if (qrcode_getModule(&qrcode, x, y))
+      if (esp_qrcode_get_module(qrcode, x, y))
       {
         display.fillRect(
-          originX + x * kQRCodeScaling,
-          originY + y * kQRCodeScaling,
+          firstModuleX + x * kQRCodeScaling,
+          firstModuleY + y * kQRCodeScaling,
           kQRCodeScaling,
           kQRCodeScaling,
           TFT_BLACK
@@ -442,27 +444,42 @@ void screenHelperQRCode(uint16_t originX, uint16_t originY, String url)
       }
     }
   }
-
   display.endWrite();
-
-  debugMessage("screenHelperQRCode() end", 1);
 }
 
-void screenQRCodeAlert()
+bool screenQRCodeAlert()
 {
   debugMessage("screenQRCodeAlert() begin", 1);
-  constexpr uint16_t messageX = 200;
+  bool success = false;
+
+  // screen layout assists in pixels
+  const uint16_t messageX = display.width() / 2;
 
   display.fillScreen(TFT_BLACK);
-  String screenURL = "https://" + WiFi.softAPIP().toString();
-  screenHelperQRCode(display.width()/2, display.height(),screenURL);
-
   display.loadFont(Roboto_Regular_18);
   display.setTextColor(TFT_WHITE, TFT_BLACK, true);
   display.setTextDatum(MC_DATUM);
-  display.drawString("QR code takes you to device portal",messageX,display.height()/2);
+
+  const String screenURL = "http://" + WiFi.softAPIP().toString();
+  esp_qrcode_config_t qrConfig = ESP_QRCODE_CONFIG_DEFAULT();
+  qrConfig.display_func = screenHelperQRCode;
+  qrConfig.max_qrcode_version = kQRCodeVersion;
+  const esp_err_t result = esp_qrcode_generate(&qrConfig, screenURL.c_str());
+
+  if (result != ESP_OK)
+  {
+    debugMessage(String("Portal QR encoding failed: ") + esp_err_to_name(result), 1);
+    String alertMessage = String("Goto ") + screenURL.c_str() + String(" to configure Climatron");
+    display.drawString(alertMessage, messageX, display.height() / 2);
+  }
+  else
+  {
+    display.drawString("QR code takes you to device portal", messageX, display.height() * 5 / 6);
+    success = true;
+  }
   display.unloadFont();
   debugMessage("screenQRCodeAlert() end", 1);
+  return success;
 }
 
 void screenHelperGraph(uint16_t initialX, uint16_t initialY, uint16_t width, uint16_t height, Measure<kSampleCapacity> measure, uint8_t datatype, String xLabel)
@@ -598,19 +615,18 @@ void screenInitialize() {
   screenHelperAlert("Initializing",TFT_WHITE,TFT_BLACK,TFT_BLUE);
   display.unloadFont();
 
-  #if DEBUG
-    display.loadFont(Roboto_Regular_12);
-    display.setTextDatum(MC_DATUM);
-    display.setTextColor(TFT_WHITE, TFT_BLACK, true);
+  display.loadFont(Roboto_Regular_12);
+  display.setTextDatum(MC_DATUM);
+  display.setTextColor(TFT_WHITE, TFT_BLACK, true);
 
-    display.drawString(endpointPath.deviceID,messageDebugX,messageDebugY);
-    String messageText = String("MAC address: ") + String(ESP.getEfuseMac(), HEX);
-    display.drawString(messageText,messageDebugX,messageDebugY+20);
-    const esp_app_desc_t* app = esp_app_get_description();
-    messageText = String("Climatron version ") + app->version + ", built " + app->date;
-    display.drawString(messageText, messageDebugX, messageDebugY+40);
-    display.unloadFont();
-  #endif
+  display.drawString(endpointPath.deviceID,messageDebugX,messageDebugY);
+  String messageText = String("MAC address: ") + String(ESP.getEfuseMac(), HEX);
+  display.drawString(messageText,messageDebugX,messageDebugY+20);
+  const esp_app_desc_t* app = esp_app_get_description();
+  messageText = String("version ") + app->version + " born " + app->date;
+  display.drawString(messageText, messageDebugX, messageDebugY+40);
+  display.unloadFont();
+
   debugMessage("screenInitialize() end",1);
 }
 
