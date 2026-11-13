@@ -412,15 +412,17 @@ void screenHelperPostStatus(uint16_t x, uint16_t y, uint16_t foregroundColor, ui
 
 static void screenHelperQRCode(esp_qrcode_handle_t qrcode)
 {
-  constexpr int quietZone = 4;
-  const int moduleCount = esp_qrcode_get_size(qrcode);
-  const int qrSize = (moduleCount + 2 * quietZone) * kQRCodeScaling;
-  const int originX = (display.width() - qrSize) / 2;
-  const int messageY = display.height() * 5 / 6;
-  const int messageTop = messageY - display.fontHeight() / 2;
-  const int originY = (messageTop - qrSize) / 2;
-  const int firstModuleX = originX + quietZone * kQRCodeScaling;
-  const int firstModuleY = originY + quietZone * kQRCodeScaling;
+  debugMessage("screenHelperQRCode() begin", 1);
+
+  constexpr uint8_t quietZone = 4;
+  const uint8_t moduleCount = esp_qrcode_get_size(qrcode);
+  const uint16_t qrSize = (moduleCount + 2 * quietZone) * kQRCodeScaling;
+  const uint16_t originX = (display.width() - qrSize) / 2;
+  const uint16_t messageY = display.height() * 5 / 6;
+  const uint16_t messageTop = messageY - display.fontHeight() / 2;
+  const uint16_t originY = (messageTop - qrSize) / 2;
+  const uint16_t firstModuleX = originX + quietZone * kQRCodeScaling;
+  const uint16_t firstModuleY = originY + quietZone * kQRCodeScaling;
 
   display.startWrite();
 
@@ -428,9 +430,9 @@ static void screenHelperQRCode(esp_qrcode_handle_t qrcode)
   display.fillRect(originX, originY, qrSize, qrSize, TFT_WHITE);
 
   // Draw black QR code modules
-  for (int y = 0; y < moduleCount; y++)
+  for (uint8_t y = 0; y < moduleCount; y++)
   {
-    for (int x = 0; x < moduleCount; x++)
+    for (uint8_t x = 0; x < moduleCount; x++)
     {
       if (esp_qrcode_get_module(qrcode, x, y))
       {
@@ -445,6 +447,7 @@ static void screenHelperQRCode(esp_qrcode_handle_t qrcode)
     }
   }
   display.endWrite();
+  debugMessage("screenHelperQRCode() end", 1);
 }
 
 bool screenQRCodeAlert()
